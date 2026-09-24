@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+.DS_Store
+# Your real config with webhook URLs and keys
+*.local.yaml

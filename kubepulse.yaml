@@ -1,0 +1,172 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kubepulse
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kubepulse
+  namespace: kubepulse
+---
+# Keys for the optional integrations. Leave a value empty to turn that feature off.
+# Tip: keep your real values in a copy named kubepulse.local.yaml (ignored by git).
+apiVersion: v1
+kind: Secret
+metadata:
+  name: kubepulse-secrets
+  namespace: kubepulse
+type: Opaque
+stringData:
+  OPENAI_API_KEY: ""
+  MATTERMOST_WEBHOOK_URL: ""
+---
+# Read-only. KubePulse can't change anything and can't read Secrets.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kubepulse-readonly
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "nodes", "events", "services", "endpoints", "persistentvolumeclaims"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["pods/log", "configmaps"]
+    verbs: ["get"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets", "statefulsets", "daemonsets"]
+    verbs: ["get", "list"]
+  - apiGroups: ["batch"]
+    resources: ["jobs", "cronjobs"]
+    verbs: ["get"]
+  - apiGroups: ["metrics.k8s.io"]
+    resources: ["pods", "nodes"]
+    verbs: ["get", "list"]
+  - apiGroups: ["cert-manager.io"]
+    resources: ["certificates"]
+    verbs: ["get", "list"]
+  # Disk usage per PVC comes from the kubelet stats API. nodes/proxy is a powerful
+  # permission, so it's off by default. To enable: uncomment this and set PVC_STATS to "true".
+  # - apiGroups: [""]
+  #   resources: ["nodes/proxy"]
+  #   verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kubepulse-readonly
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kubepulse-readonly
+subjects:
+  - kind: ServiceAccount
+    name: kubepulse
+    namespace: kubepulse
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kubepulse
+  namespace: kubepulse
+spec:
+  replicas: 1
+  strategy: { type: Recreate }   # one poller, so alerts are never sent twice
+  selector:
+    matchLabels: { app: kubepulse }
+  template:
+    metadata:
+      labels: { app: kubepulse }
+    spec:
+      serviceAccountName: kubepulse
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        fsGroup: 65534
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: kubepulse
+          image: christoj/kubepulse:0.4.4
+          ports: [{ containerPort: 8080 }]
+          envFrom:
+            - secretRef: { name: kubepulse-secrets, optional: true }
+          env:
+            - name: CLUSTER_NAME        # shown on the dashboard, wallboard and alerts
+              value: ""
+            - name: DASHBOARD_URL       # your KubePulse URL, so alerts link straight to the pod
+              value: ""
+            - name: NAMESPACES          # optional, e.g. "prod,uat"; empty = all
+              value: ""
+            - name: POLL_SECONDS        # how often KubePulse reads the cluster
+              value: "20"
+            - name: OPENAI_MODEL
+              value: "gpt-4o-mini"
+            - name: ALERT_PENDING_MINUTES   # alert on pods pending / not ready this long
+              value: "3"
+            - name: ALERT_COOLDOWN_MINUTES  # don't re-alert a flapping problem within this window
+              value: "30"
+            - name: CERT_WARN_DAYS
+              value: "14"
+            - name: PVC_WARN_PERCENT
+              value: "85"
+            - name: PVC_STATS
+              value: "false"
+          readinessProbe:
+            httpGet: { path: /healthz, port: 8080 }
+          livenessProbe:
+            httpGet: { path: /healthz, port: 8080 }
+            periodSeconds: 30
+          resources:
+            requests: { cpu: 10m, memory: 40Mi }
+            limits: { cpu: 200m, memory: 128Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          volumeMounts:
+            - { name: data, mountPath: /data }
+      volumes:
+        # Restart timeline and daily uptime survive container restarts
+        - name: data
+          emptyDir: { sizeLimit: 16Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kubepulse
+  namespace: kubepulse
+spec:
+  selector: { app: kubepulse }
+  ports: [{ port: 80, targetPort: 8080 }]
+---
+# Optional: serve KubePulse at https://kubepulse.example.com/kubepulse. Change the host.
+# There is no login, so add authentication (e.g. nginx basic auth or oauth2-proxy) before exposing it.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: kubepulse-ingress
+  namespace: kubepulse
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    # /kubepulse -> / , /kubepulse/foo -> /foo
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    # cert-manager issues the TLS certificate. Remove this and the tls block if you don't use it.
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - kubepulse.example.com
+      secretName: kubepulse-tls
+  rules:
+    - host: kubepulse.example.com
+      http:
+        paths:
+          - path: /kubepulse(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: kubepulse
+                port:
+                  number: 80
