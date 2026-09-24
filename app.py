@@ -186,8 +186,11 @@ def pod_status(pod):
 WAIT_STATES = {"Pending", "ContainerCreating", "PodInitializing"}
 
 
-def triage(status, ready, total, last_exit_age, last_reason):
+def triage(status, ready, total, last_exit_age, last_reason, phase="", owner=""):
     """Return (level, kind, short reason) for a pod. level is ok / warn / bad."""
+    if phase == "Failed" and (status == "Evicted" or owner.startswith(("Job/", "CronJob/"))):
+        # Finished pods Kubernetes keeps around: a replacement or the next run already took over
+        return "warn", "finished", "Evicted, replaced by a new pod" if status == "Evicted" else f"Job run failed ({status})"
     if status in ("Running", "Succeeded", "Completed", "Terminating"):
         if status == "Running" and ready < total:
             return "warn", "notready", "Running but not ready"
@@ -223,12 +226,13 @@ def pod_row(p, usage=(None, None)):
     last_exit_age = age_seconds(last.get("finishedAt")) if last else None
     ready = sum(1 for c in cstat if c.get("ready"))
     st = pod_status(p)
-    level, kind, attention = triage(st, ready, len(containers), last_exit_age, last_reason)
+    owner = pod_owner(meta)
+    level, kind, attention = triage(st, ready, len(containers), last_exit_age, last_reason, status.get("phase", ""), owner)
     ready_cond = next((c for c in status.get("conditions", []) or [] if c.get("type") == "Ready"), None)
     return {
         "namespace": meta["namespace"],
         "name": meta["name"],
-        "owner": pod_owner(meta),
+        "owner": owner,
         "status": st,
         "ready": f"{ready}/{len(containers)}",
         "restarts": sum(c.get("restartCount", 0) for c in cstat),
@@ -375,13 +379,15 @@ class Insights:
             state = json.loads((DATA_DIR / "state.json").read_text())
             self.timeline = {int(k): v for k, v in state.get("timeline", {}).items()}
             self.days = state.get("days", {})
+            keep_after = time.time() - HISTORY_POINTS * POLL_SECONDS
+            HISTORY.extend(h for h in state.get("history", []) if h[0] > keep_after)
         except Exception:
             pass
 
     def _save(self):
         try:
             tmp = DATA_DIR / "state.json.tmp"
-            tmp.write_text(json.dumps({"timeline": self.timeline, "days": self.days}))
+            tmp.write_text(json.dumps({"timeline": self.timeline, "days": self.days, "history": list(HISTORY)}))
             tmp.replace(DATA_DIR / "state.json")
         except Exception:
             pass  # no writable volume: keep it in memory only
@@ -455,7 +461,7 @@ class Insights:
             self.slow_at = now
             self.certs = cert_rows()
             self.pvcs = pvc_rows(snap["nodes"])
-        if now - self.saved_at > 300:
+        if now - self.saved_at > 120:
             self.saved_at = now
             self._save()
 
@@ -1173,7 +1179,7 @@ class Alerter:
             stuck = p["kind"] in ("pending", "notready") and (p["stateAge"] or 0) >= ALERT_PENDING
             alert = {"kind": "pod", "ns": p["namespace"], "name": p["name"], "title": f"{p['namespace']}/{p['name']}",
                      "detail": latest.get(pk, ""), "fields": {"Node": p["node"] or "not scheduled", "Restarts": str(p["restarts"])}}
-            if p["kind"] == "failing" or stuck:
+            if p["kind"] in ("failing", "finished") or stuck:
                 reason = p["attention"] + (f" for {fmt_age(p['stateAge'])}" if stuck else "")
                 cur[("pod",) + pk] = dict(alert, reason=reason, level="bad" if p["kind"] == "failing" else "warn")
             elif p["lastReason"] == "OOMKilled" and prev is not None and p["restarts"] > prev:

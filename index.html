@@ -406,6 +406,12 @@
   .wb::after { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity .4s;
                box-shadow: inset 0 0 0 6px var(--bad), inset 0 0 160px 30px rgba(255, 60, 60, .35); }
   .wb.critical::after { opacity: 1; animation: alarm 1.8s ease-in-out infinite; }
+  /* Old data must never look live on a TV */
+  .wb.stale .wb-main, .wb.stale .wb-foot, .wb.stale .ecg { opacity: .3; filter: grayscale(.8); }
+  .wb.stale.critical::after { opacity: 0; animation: none; }
+  .wb-stale { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 2; padding: 22px 34px; border-radius: 18px;
+              background: #2a1d05; border: 2px solid #f5b546; color: #f5b546; font-size: 30px; font-weight: 700; white-space: nowrap;
+              box-shadow: 0 20px 60px rgba(0,0,0,.6); }
   .wb.critical { background: radial-gradient(1200px 700px at 50% -20%, rgba(255, 70, 70, .22), transparent 65%), #0b0508; }
   @keyframes alarm { 50% { opacity: .35; } }
   .wb-sound { border: 1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.04); color: #efedf8; border-radius: 10px; padding: 8px 12px; font-size: 13px; }
@@ -563,6 +569,7 @@
 
 <!-- Wallboard -->
 <div class="wb" id="wb" hidden><div class="wb-stage" id="wbStage">
+  <div class="wb-stale" id="wbStale" hidden></div>
   <div class="wb-head">
     <span class="logo" role="img" aria-label="Lifetrenz"></span>
     <div class="name"><b>KubePulse</b><small>Know before it breaks.</small></div>
@@ -687,9 +694,8 @@ function summary() {
   const line = state === "ok" ? "Every node is ready and every pod is healthy."
     : ready < nodes.length ? `${plural(nodes.length - ready, "node")} not ready${bad.length ? ` and ${plural(bad.length, "pod")} failing` : ""}.`
     : bad.length ? `${plural(bad.length, "pod")} failing, ${att.length - bad.length} more need attention.` : `${plural(att.length, "pod")} need attention.`;
-  const h = data.history || {}, t = h.t || [];
-  const hourAgo = t.findIndex((x) => x >= t.at(-1) - 3600);
-  const restartsHour = t.length ? Math.max(0, (h.restarts.at(-1) ?? 0) - (h.restarts[Math.max(0, hourAgo)] ?? 0)) : 0;
+  const tl = data.insights?.timeline;
+  const restartsHour = tl ? tl.restarts.slice(-4).reduce((a, b) => a + b, 0) : 0;
   return { ready, att, bad, healthyPct, state, word, line, restartsHour };
 }
 
@@ -705,9 +711,7 @@ function renderShell(s) {
   $("alertChip").innerHTML = a.enabled
     ? `<span class="dot pulse ${a.lastError ? "bad-c" : "ok-c"}"></span><div><b>${a.lastError ? "Alert delivery failing" : "Alerts on"}</b>${a.lastError ? "Check the webhook" : `Mattermost · ${a.active} active`}</div>`
     : `<span class="dot muted-c"></span><div><b>Alerts off</b>Mattermost not set</div>`;
-  const stale = !!data.error;
-  $("live").querySelector(".dot").className = "dot pulse " + (stale ? "bad-c" : "ok-c");
-  $("liveText").textContent = stale ? "Cluster unreachable, showing last data" : `Live · ${timeStr(data.generatedAt, true)}`;
+  paintFreshness();
   $("viewSub").textContent = data.clusterName ? `${data.clusterName} · ${plural(data.nodes.length, "node")} · ${plural(data.pods.length, "pod")}` : `${plural(data.nodes.length, "node")} · ${plural(data.pods.length, "pod")}`;
   $("notes").innerHTML = (data.error ? `<div class="note">Can't reach the Kubernetes API right now: ${esc(data.error)}</div>` : "")
     + (data.metricsAvailable ? "" : '<div class="note">CPU and memory usage are unavailable because metrics-server is not responding.</div>');
@@ -944,8 +948,6 @@ function renderEvents() {
 function renderWall(s) {
   $("wbStage").style.setProperty("--s", Math.min(innerWidth / 1920, innerHeight / 1080));
   $("wbCluster").hidden = !data.clusterName; $("wbCluster").textContent = data.clusterName;
-  $("wbUpdated").textContent = data.error ? "Cluster unreachable" : `Updated ${timeStr(data.generatedAt, true)}`;
-  $("wbDot").className = "dot pulse " + (data.error ? "bad-c" : "ok-c");
   $("wb").classList.toggle("critical", s.state === "bad");
   $("wbEcg").className = "ecg " + lvlClass(s.state);
   $("wbStatus").className = `panel wb-status ${lvlClass(s.state)} ${s.state === "bad" ? "alarm" : ""}`;
@@ -1029,6 +1031,28 @@ function setWall(on) {
 
 // ---------- Refresh loop ----------
 
+// Never show old data as live: track when a *new* snapshot last arrived, by this browser's clock
+let lastGen = null, freshAt = 0, fetchFailed = false;
+function freshness() {
+  const age = Math.round((Date.now() - freshAt) / 1000), limit = Math.max(60, (data.pollSeconds || 20) * 3);
+  if (fetchFailed) return { stale: true, text: `Can't reach KubePulse · data is ${fmtAge(age)} old` };
+  if (data.error) return { stale: true, text: "Can't reach the Kubernetes API · showing last data" };
+  if (age > limit) return { stale: true, text: `No new data for ${fmtAge(age)} · check KubePulse` };
+  return { stale: false, text: `Updated ${timeStr(data.generatedAt, true)}` };
+}
+function paintFreshness() {
+  if (!data) return;
+  const f = freshness();
+  $("live").querySelector(".dot").className = "dot pulse " + (f.stale ? "bad-c" : "ok-c");
+  $("liveText").textContent = f.stale ? f.text : `Live · ${timeStr(data.generatedAt, true)}`;
+  $("wbUpdated").textContent = f.text;
+  $("wbDot").className = "dot pulse " + (f.stale ? "bad-c" : "ok-c");
+  $("wb").classList.toggle("stale", f.stale);
+  $("wbStale").hidden = !f.stale;
+  $("wbStale").textContent = "⚠ " + f.text;
+}
+setInterval(paintFreshness, 5000);
+
 function render() {
   if (!data) return;
   const s = summary();
@@ -1095,10 +1119,14 @@ async function load() {
   try {
     const prev = data;
     data = await getJSON(API + "snapshot");
+    fetchFailed = false;
+    if (data.generatedAt !== lastGen) { lastGen = data.generatedAt; freshAt = Date.now(); }
     if (prev && prev.generatedAt !== data.generatedAt) playTransitions(prev, data);
     render();
     schedule((data.pollSeconds || 20) * 1000);
   } catch (e) {
+    fetchFailed = true;
+    if (data) { paintFreshness(); schedule(e.status === 503 ? 2000 : 10000); return; }
     $("live").querySelector(".dot").className = "dot bad-c";
     $("liveText").textContent = e.status === 503 ? "Starting up…" : "Can't reach KubePulse";
     if (!data) $("notes").innerHTML = `<div class="note">${esc(e.message)}</div>`;
