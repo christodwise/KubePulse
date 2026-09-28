@@ -55,20 +55,9 @@ PVC_WARN_PERCENT = int(env("PVC_WARN_PERCENT", "85"))
 DATA_DIR = Path(env("DATA_DIR", "/data"))
 # Disk usage per PVC needs the kubelet stats API (RBAC: nodes/proxy). Off by default.
 PVC_STATS = env("PVC_STATS", "false").lower() == "true"
+# Volume usage comes from Prometheus (kubelet_volume_stats_*). Empty = find it in the cluster automatically.
+PROMETHEUS_URL = env("PROMETHEUS_URL", "").strip().rstrip("/")
 
-# Cost estimates. Prices are in USD; COST_RATE converts them for display (e.g. COST_CURRENCY=AED, COST_RATE=3.6725).
-COST_CURRENCY = env("COST_CURRENCY", "USD").strip().upper() or "USD"
-COST_RATE = float(env("COST_RATE", "1") or 1)
-LIVE_PRICES = env("LIVE_PRICES", "true").lower() == "true"          # Azure public price list for AKS nodes and disks
-SPOT_FACTOR = float(env("SPOT_FACTOR", "0.3") or 0.3)                 # spot price as a share of on-demand, when unknown
-STORAGE_GB_MONTH = float(env("STORAGE_GB_MONTH", "0.10") or 0.10)     # fallback disk price per GiB-month
-CONTROL_PLANE_HOURLY = env("CONTROL_PLANE_HOURLY", "").strip()        # empty = EKS/GKE $0.10, AKS free tier $0
-try:
-    NODE_PRICES = {k: float(v) for k, v in json.loads(env("NODE_PRICES", "") or "{}").items()}  # {"instance-type": USD per hour}
-except (ValueError, AttributeError):
-    print("NODE_PRICES is not valid JSON, ignoring it", flush=True)
-    NODE_PRICES = {}
-GIB = 1024**3
 
 
 # ---------- Kubernetes API access ----------
@@ -268,12 +257,6 @@ def pod_row(p, usage=(None, None)):
     }
 
 
-def node_provider(n):
-    """aws / azure / gcp from the node's providerID, e.g. azure:///subscriptions/..."""
-    scheme = (n.get("spec", {}).get("providerID") or "").split(":")[0]
-    return {"gce": "gcp"}.get(scheme, scheme)
-
-
 def build_snapshot():
     if NAMESPACES:
         pods = []
@@ -321,16 +304,8 @@ def build_snapshot():
             "memAlloc": parse_mem(alloc.get("memory")),
             "pods": pods_per_node.get(meta["name"], 0),
             "podsAlloc": int(alloc.get("pods", 0)),
-            "cpuCap": parse_cpu(status.get("capacity", {}).get("cpu") or alloc.get("cpu")),
-            "memCap": parse_mem(status.get("capacity", {}).get("memory") or alloc.get("memory")),
             "instanceType": labels.get("node.kubernetes.io/instance-type") or labels.get("beta.kubernetes.io/instance-type") or "",
-            "region": labels.get("topology.kubernetes.io/region") or labels.get("failure-domain.beta.kubernetes.io/region") or "",
             "zone": labels.get("topology.kubernetes.io/zone") or "",
-            "provider": node_provider(n),
-            "systemPool": labels.get("kubernetes.azure.com/mode") == "system" or any(r in ("control-plane", "master", "system") for r in roles),
-            "spot": (labels.get("eks.amazonaws.com/capacityType") == "SPOT" or labels.get("karpenter.sh/capacity-type") == "spot"
-                     or labels.get("kubernetes.azure.com/scalesetpriority") == "spot"
-                     or labels.get("cloud.google.com/gke-spot") == "true" or labels.get("cloud.google.com/gke-preemptible") == "true"),
         }
         if usage:
             cluster["cpu"] += row["cpu"]; cluster["cpuAlloc"] += row["cpuAlloc"]
@@ -401,9 +376,6 @@ class Insights:
         self.ended = {}      # (ns, owner) -> [(created at, ended at)]
         self.prev = None     # (ns, pod) -> (restarts, level)
         self.certs = self.pvcs = None
-        self.cost_days = {}   # "YYYY-MM-DD" -> estimated spend in USD
-        self.cost_at = 0.0
-        self.lbs = 0
         self.slow_at = self.saved_at = 0.0
         self._load()
 
@@ -413,7 +385,6 @@ class Insights:
             state = json.loads((DATA_DIR / "state.json").read_text())
             self.timeline = {int(k): v for k, v in state.get("timeline", {}).items()}
             self.days = state.get("days", {})
-            self.cost_days = state.get("costDays", {})
             keep_after = time.time() - HISTORY_POINTS * POLL_SECONDS
             HISTORY.extend(h for h in state.get("history", []) if h[0] > keep_after)
         except Exception:
@@ -422,7 +393,7 @@ class Insights:
     def _save(self):
         try:
             tmp = DATA_DIR / "state.json.tmp"
-            tmp.write_text(json.dumps({"timeline": self.timeline, "days": self.days, "history": list(HISTORY), "costDays": self.cost_days}))
+            tmp.write_text(json.dumps({"timeline": self.timeline, "days": self.days, "history": list(HISTORY)}))
             tmp.replace(DATA_DIR / "state.json")
         except Exception:
             pass  # no writable volume: keep it in memory only
@@ -495,12 +466,10 @@ class Insights:
         if now - self.slow_at > self.SLOW_EVERY:
             self.slow_at = now
             self.certs = cert_rows()
-            PRICING.refresh(snap["nodes"])
-            self.pvcs = price_pvcs(pvc_rows(snap["nodes"]), snap["nodes"])
+            self.pvcs = pvc_rows(snap["nodes"])
             users = {(p["namespace"], c): p["name"] for p in pods for c in p["claims"]}
             for v in self.pvcs or []:
                 v["pod"] = v["pod"] or users.get((v["namespace"], v["name"]))
-            self.lbs = count_load_balancers()
         if now - self.saved_at > 120:
             self.saved_at = now
             self._save()
@@ -511,103 +480,11 @@ class Insights:
             "waste": self._waste(pods),
             "churn": self._churn(pods, now),
         }
-        snap["cost"] = self._cost(snap, now)
+
         snap["certs"] = self.certs
         snap["pvcs"] = self.pvcs
         snap["pvcStats"] = PVC_STATS
-
-    def _cost(self, snap, now):
-        """Estimated cost, split the OpenCost way: each node's price is shared out to its pods by
-        max(request, usage) of CPU and memory; whatever no pod claims is idle capacity."""
-        nodes = snap["nodes"]
-        if not nodes:
-            return None
-        by_node = {}
-        for p in snap["pods"]:
-            by_node.setdefault(p["node"], []).append(p)
-        # Nodes running pods with persistent volumes (databases, queues) shouldn't move to spot
-        stateful_nodes = {p["node"] for p in snap["pods"] if p["claims"]}
-        namespaces, workloads, node_rows = {}, {}, []
-        nodes_hourly = idle_hourly = cpu_money = mem_money = cpu_total = mem_total = 0.0
-        for n in nodes:
-            hourly, spot_hourly, source = PRICING.node(n)
-            # Split the node price into a CPU part and a memory part, in the usual 1 vCPU : 7.5 GiB price ratio
-            cpu_ref, mem_ref = n["cpuCap"] * 0.031611, n["memCap"] / GIB * 0.004237
-            cpu_part = hourly * cpu_ref / (cpu_ref + mem_ref) if cpu_ref + mem_ref else hourly / 2
-            mem_part = hourly - cpu_part
-            cpu_rate, mem_rate = cpu_part / max(n["cpuAlloc"], 0.001), mem_part / max(n["memAlloc"] / GIB, 0.001)
-            cpu_money += cpu_part; mem_money += mem_part
-            cpu_total += n["cpuAlloc"]; mem_total += n["memAlloc"] / GIB
-            claims = []
-            for p in by_node.get(n["name"], []):
-                if p["status"] in ("Succeeded", "Completed") or p["kind"] == "finished":
-                    continue
-                claims.append((p, max(p["cpuReq"] or 0, p["cpu"] or 0), max(p["memReq"] or 0, p["mem"] or 0)))
-            cpu_claim, mem_claim = sum(c[1] for c in claims), sum(c[2] for c in claims)
-            # Overcommitted node: scale claims down so they add up to the node's price, not more
-            fc = min(1.0, n["cpuAlloc"] / cpu_claim) if cpu_claim else 1.0
-            fm = min(1.0, n["memAlloc"] / mem_claim) if mem_claim else 1.0
-            allocated = 0.0
-            for pod, c, m in claims:
-                cost = c * fc * cpu_rate + m / GIB * fm * mem_rate
-                allocated += cost
-                e = namespaces.setdefault(pod["namespace"], {"compute": 0.0, "storage": 0.0, "cpu": 0.0, "mem": 0.0, "pods": 0})
-                e["compute"] += cost; e["cpu"] += c; e["mem"] += m; e["pods"] += 1
-                w = workloads.setdefault((pod["namespace"], pod["owner"] or "Pod/" + pod["name"]), {"hourly": 0.0, "pods": 0, "cpu": 0.0, "mem": 0.0})
-                w["hourly"] += cost; w["pods"] += 1; w["cpu"] += c; w["mem"] += m
-            nodes_hourly += hourly
-            idle_hourly += max(0.0, hourly - allocated)
-            node_rows.append({"name": n["name"], "instanceType": n["instanceType"] or "unknown", "spot": n["spot"], "zone": n["zone"],
-                              "systemPool": n["systemPool"], "stateful": n["name"] in stateful_nodes,
-                              "hourly": hourly, "spotHourly": spot_hourly, "source": source,
-                              "allocatedPct": round(allocated / hourly * 100, 1) if hourly else 0.0})
-
-        storage_hourly = 0.0
-        for v in self.pvcs or []:
-            if v.get("monthly"):
-                storage_hourly += v["monthly"] / 730
-                namespaces.setdefault(v["namespace"], {"compute": 0.0, "storage": 0.0, "cpu": 0.0, "mem": 0.0, "pods": 0})["storage"] += v["monthly"] / 730
-        provider = max((n["provider"] for n in nodes), key=[n["provider"] for n in nodes].count)
-        cp_hourly = float(CONTROL_PLANE_HOURLY) if CONTROL_PLANE_HOURLY else {"aws": 0.10, "gcp": 0.10}.get(provider, 0.0)
-        # Load balancer base prices only; traffic is billed on top and isn't included
-        lb_hourly = (0.025 + 0.005 * self.lbs if self.lbs else 0.0) if provider == "azure" else 0.0225 * self.lbs
-        total = nodes_hourly + storage_hourly + cp_hourly + lb_hourly
-
-        # Running spend per day, so the page can show a 7-day trend
-        dt = now - self.cost_at if 0 < now - self.cost_at < 5 * POLL_SECONDS else POLL_SECONDS
-        self.cost_at = now
-        day = _day(now)
-        self.cost_days[day] = self.cost_days.get(day, 0.0) + total * dt / 3600
-        for d in sorted(self.cost_days)[:-8]:
-            del self.cost_days[d]
-
-        cpu_rate_avg = cpu_money / cpu_total if cpu_total else 0.0
-        mem_rate_avg = mem_money / mem_total if mem_total else 0.0
-        waste = self._waste(snap["pods"])
-        rightsize = sum(r["cpuWaste"] * cpu_rate_avg + r["memWaste"] / GIB * mem_rate_avg for r in waste)
-        # Only nodes that could reasonably run on spot: not system pools, not hosting persistent volumes
-        spot_saving = sum(r["hourly"] - (r["spotHourly"] or r["hourly"] * SPOT_FACTOR) for r in node_rows
-                          if not r["spot"] and not r["systemPool"] and not r["stateful"])
-        m = 730  # hours per month
-        return {
-            "currency": COST_CURRENCY, "rate": COST_RATE, "provider": provider,
-            "monthly": total * m, "hourly": total,
-            "parts": {"nodes": nodes_hourly * m, "storage": storage_hourly * m, "loadBalancers": lb_hourly * m, "controlPlane": cp_hourly * m},
-            "loadBalancerCount": self.lbs,
-            "idle": {"monthly": idle_hourly * m, "percent": round(idle_hourly / nodes_hourly * 100, 1) if nodes_hourly else 0.0},
-            "rates": {"cpuCoreMonth": cpu_rate_avg * m, "memGiBMonth": mem_rate_avg * m},
-            "nodes": sorted(node_rows, key=lambda r: -r["hourly"]),
-            "namespaces": sorted(({"namespace": k, "monthly": (v["compute"] + v["storage"]) * m, "compute": v["compute"] * m,
-                                   "storage": v["storage"] * m, "cpu": v["cpu"], "mem": v["mem"], "pods": v["pods"]}
-                                  for k, v in namespaces.items()), key=lambda r: -r["monthly"]),
-            "workloads": sorted(({"namespace": k[0], "owner": k[1], "monthly": v["hourly"] * m, "pods": v["pods"], "cpu": v["cpu"], "mem": v["mem"]}
-                                 for k, v in workloads.items()), key=lambda r: -r["monthly"])[:15],
-            "savings": {"rightsize": rightsize * m, "idle": idle_hourly * m, "spot": spot_saving * m,
-                        "wasteRows": [{"namespace": r["namespace"], "owner": r["owner"],
-                                       "monthly": (r["cpuWaste"] * cpu_rate_avg + r["memWaste"] / GIB * mem_rate_avg) * m} for r in waste]},
-            "days": [{"day": d, "spend": round(v, 4)} for d, v in sorted(self.cost_days.items())[-7:]],
-            "controlPlaneAuto": not CONTROL_PLANE_HOURLY,
-        }
+        snap["volumeSource"] = VOLUME_SOURCE["name"]
 
     def _timeline(self, now):
         start = int((now - 86400) // self.BUCKET * self.BUCKET) + self.BUCKET
@@ -694,8 +571,78 @@ def cert_rows():
     return sorted(rows, key=lambda r: r["daysLeft"] if r["daysLeft"] is not None else -1)
 
 
+# Common Prometheus service names, best first (kube-prometheus-stack, prometheus chart, ...)
+PROM_NAMES = ["prometheus-operated", "prometheus-server", "prometheus", "prometheus-k8s"]
+PROM_SKIP = ("node-exporter", "operator", "alertmanager", "pushgateway", "kube-state", "blackbox", "adapter", "grafana", "coredns",
+             "kubelet", "kube-proxy", "kube-etcd", "scheduler", "controller-manager")
+
+
+def find_prometheus():
+    """(namespace, name, port) of the cluster's Prometheus, found by its Service, or None."""
+    paths = [f"/api/v1/namespaces/{ns}/services" for ns in NAMESPACES] or ["/api/v1/services"]
+    found = []
+    for path in paths:
+        for svc in (k8s_get_optional(path) or {}).get("items", []):
+            name, ports = svc["metadata"]["name"], svc["spec"].get("ports") or []
+            if "prometheus" not in name or any(x in name for x in PROM_SKIP) or not ports:
+                continue
+            port = next((p["port"] for p in ports if p.get("port") == 9090 or p.get("name") in ("web", "http-web", "http")), ports[0]["port"])
+            rank = PROM_NAMES.index(name) if name in PROM_NAMES else (len(PROM_NAMES) if name.endswith("-prometheus") else len(PROM_NAMES) + 1)
+            found.append((rank, svc["metadata"]["namespace"], name, port))
+    return min(found)[1:] if found else None
+
+
+def prometheus_query(query):
+    """Run an instant query. In the cluster it calls Prometheus directly; when KubePulse runs on a laptop
+    (K8S_API set) it goes through the API server's service proxy instead."""
+    qs = "query=" + quote(query)
+    if PROMETHEUS_URL:
+        with urllib.request.urlopen(f"{PROMETHEUS_URL}/api/v1/query?{qs}", timeout=10) as resp:
+            return json.load(resp)["data"]["result"]
+    target = find_prometheus()
+    if not target:
+        return None
+    ns, name, port = target
+    if env("K8S_API"):
+        return k8s_get(f"/api/v1/namespaces/{ns}/services/{name}:{port}/proxy/api/v1/query?{qs}")["data"]["result"]
+    with urllib.request.urlopen(f"http://{name}.{ns}.svc:{port}/api/v1/query?{qs}", timeout=10) as resp:
+        return json.load(resp)["data"]["result"]
+
+
+VOLUME_SOURCE = {"name": None}   # where the last volume usage came from, shown on the page
+
+
+def volume_usage_from_prometheus():
+    try:
+        used = prometheus_query("max by (namespace, persistentvolumeclaim) (kubelet_volume_stats_used_bytes)")
+        cap = prometheus_query("max by (namespace, persistentvolumeclaim) (kubelet_volume_stats_capacity_bytes)")
+    except Exception as e:
+        print(f"volume usage from Prometheus failed: {api_error(e)[1]}", flush=True)
+        return {}
+    if not used:
+        return {}
+    caps = {(r["metric"].get("namespace"), r["metric"].get("persistentvolumeclaim")): float(r["value"][1]) for r in cap or []}
+    return {(r["metric"].get("namespace"), r["metric"].get("persistentvolumeclaim")):
+            (float(r["value"][1]), caps.get((r["metric"].get("namespace"), r["metric"].get("persistentvolumeclaim"))), None) for r in used}
+
+
+def volume_usage_from_kubelet(nodes):
+    usage = {}
+    for n in nodes:
+        if not n["ready"]:
+            continue
+        stats = k8s_get_optional(f"/api/v1/nodes/{n['name']}/proxy/stats/summary")
+        for pod in (stats or {}).get("pods", []):
+            for v in pod.get("volume", []) or []:
+                ref = v.get("pvcRef")
+                if ref and v.get("capacityBytes"):
+                    usage[(ref["namespace"], ref["name"])] = (v.get("usedBytes") or 0, v["capacityBytes"], pod["podRef"]["name"])
+    return usage
+
+
 def pvc_rows(nodes):
-    """PersistentVolumeClaims, with disk usage from the kubelet when PVC_STATS is on."""
+    """PersistentVolumeClaims with how full they are: from Prometheus if the cluster has it,
+    otherwise from the kubelet when PVC_STATS is on."""
     paths = [f"/api/v1/namespaces/{ns}/persistentvolumeclaims" for ns in NAMESPACES] or ["/api/v1/persistentvolumeclaims"]
     claims = []
     for path in paths:
@@ -703,171 +650,23 @@ def pvc_rows(nodes):
             claims += k8s_list(path)["items"]
         except Exception:
             return None
-    usage = {}
-    if PVC_STATS:
-        for n in nodes:
-            if not n["ready"]:
-                continue
-            stats = k8s_get_optional(f"/api/v1/nodes/{n['name']}/proxy/stats/summary")
-            for pod in (stats or {}).get("pods", []):
-                for v in pod.get("volume", []) or []:
-                    ref = v.get("pvcRef")
-                    if ref and v.get("capacityBytes"):
-                        usage[(ref["namespace"], ref["name"])] = (v.get("usedBytes") or 0, v["capacityBytes"], pod["podRef"]["name"])
+    usage, VOLUME_SOURCE["name"] = volume_usage_from_prometheus(), "Prometheus"
+    if not usage and PVC_STATS:
+        usage, VOLUME_SOURCE["name"] = volume_usage_from_kubelet(nodes), "kubelet"
+    if not usage:
+        VOLUME_SOURCE["name"] = None
     rows = []
     for c in claims:
         key = (c["metadata"]["namespace"], c["metadata"]["name"])
         used, cap, pod = usage.get(key, (None, None, None))
+        size = (c.get("status", {}).get("capacity") or {}).get("storage") or c["spec"].get("resources", {}).get("requests", {}).get("storage")
+        cap = cap or (parse_mem(size) if used is not None and size else None)
         rows.append({
-            "namespace": key[0], "name": key[1], "phase": c.get("status", {}).get("phase"),
-            "size": (c.get("status", {}).get("capacity") or {}).get("storage") or c["spec"].get("resources", {}).get("requests", {}).get("storage"),
+            "namespace": key[0], "name": key[1], "phase": c.get("status", {}).get("phase"), "size": size,
             "storageClass": c["spec"].get("storageClassName"), "used": used, "capacity": cap, "pod": pod,
-            "percent": round(used / cap * 100, 1) if cap else None,
+            "percent": round(used / cap * 100, 1) if used is not None and cap else None,
         })
     return sorted(rows, key=lambda r: (r["phase"] == "Bound", -(r["percent"] or 0)))
-
-
-# ---------- Prices ----------
-
-# On-demand Linux list prices in USD per hour, us-east-1 / us-central1. Regions differ, so set
-# NODE_PRICES for exact numbers. AKS nodes use Azure's live price list for their own region instead.
-LIST_PRICES = {
-    # AWS
-    "t3.medium": 0.0416, "t3.large": 0.0832, "t3.xlarge": 0.1664, "t3.2xlarge": 0.3328,
-    "t3a.medium": 0.0376, "t3a.large": 0.0752, "t3a.xlarge": 0.1504, "t3a.2xlarge": 0.3008,
-    "t4g.medium": 0.0336, "t4g.large": 0.0672, "t4g.xlarge": 0.1344, "t4g.2xlarge": 0.2688,
-    "m5.large": 0.096, "m5.xlarge": 0.192, "m5.2xlarge": 0.384, "m5.4xlarge": 0.768, "m5.8xlarge": 1.536,
-    "m5a.large": 0.086, "m5a.xlarge": 0.172, "m5a.2xlarge": 0.344, "m5a.4xlarge": 0.688,
-    "m6i.large": 0.096, "m6i.xlarge": 0.192, "m6i.2xlarge": 0.384, "m6i.4xlarge": 0.768,
-    "m6a.large": 0.0864, "m6a.xlarge": 0.1728, "m6a.2xlarge": 0.3456, "m6a.4xlarge": 0.6912,
-    "m6g.large": 0.077, "m6g.xlarge": 0.154, "m6g.2xlarge": 0.308, "m6g.4xlarge": 0.616,
-    "m7i.large": 0.1008, "m7i.xlarge": 0.2016, "m7i.2xlarge": 0.4032, "m7g.large": 0.0816, "m7g.xlarge": 0.1632, "m7g.2xlarge": 0.3264,
-    "c5.large": 0.085, "c5.xlarge": 0.17, "c5.2xlarge": 0.34, "c5.4xlarge": 0.68,
-    "c6i.large": 0.085, "c6i.xlarge": 0.17, "c6i.2xlarge": 0.34, "c6i.4xlarge": 0.68,
-    "c6a.large": 0.0765, "c6a.xlarge": 0.153, "c6a.2xlarge": 0.306, "c6g.large": 0.068, "c6g.xlarge": 0.136, "c6g.2xlarge": 0.272,
-    "c7g.large": 0.0725, "c7g.xlarge": 0.145, "c7g.2xlarge": 0.29,
-    "r5.large": 0.126, "r5.xlarge": 0.252, "r5.2xlarge": 0.504, "r5.4xlarge": 1.008,
-    "r6i.large": 0.126, "r6i.xlarge": 0.252, "r6i.2xlarge": 0.504, "r6a.large": 0.1134, "r6a.xlarge": 0.2268, "r6a.2xlarge": 0.4536,
-    "r6g.large": 0.1008, "r6g.xlarge": 0.2016, "r6g.2xlarge": 0.4032,
-    # GCP
-    "e2-standard-2": 0.067, "e2-standard-4": 0.134, "e2-standard-8": 0.268, "e2-standard-16": 0.536,
-    "n2-standard-2": 0.0971, "n2-standard-4": 0.1942, "n2-standard-8": 0.3885, "n2-standard-16": 0.7769,
-}
-# Per GiB-month, us-east-1 EBS
-EBS_PRICES = {"gp3": 0.08, "gp2": 0.10, "io1": 0.125, "io2": 0.125, "st1": 0.045, "sc1": 0.015}
-# Azure managed disk tiers by size (GiB)
-AZURE_DISK_TIERS = [(4, "1"), (8, "2"), (16, "3"), (32, "4"), (64, "6"), (128, "10"), (256, "15"), (512, "20"),
-                    (1024, "30"), (2048, "40"), (4096, "50"), (8192, "60"), (16384, "70"), (32767, "80")]
-
-
-def azure_prices(filt):
-    url = "https://prices.azure.com/api/retail/prices?$filter=" + quote(filt)
-    with urllib.request.urlopen(url, timeout=15) as resp:
-        return json.load(resp).get("Items", [])
-
-
-class Pricing:
-    def __init__(self):
-        self.vm = {}     # (region, sku) -> {"od", "spot", "at"}
-        self.disk = {}   # (region, disk sku) -> {"monthly", "at"}
-
-    def _fresh(self, hit):
-        return hit and time.time() - hit["at"] < (86400 if hit.get("od") or hit.get("monthly") else 3600)
-
-    def refresh(self, nodes):
-        """Fetch Azure list prices for the VM sizes in use (cached a day, retried hourly on failure)."""
-        if not LIVE_PRICES:
-            return
-        for region, sku in {(n["region"], n["instanceType"]) for n in nodes if n["provider"] == "azure" and n["instanceType"]}:
-            if self._fresh(self.vm.get((region, sku))):
-                continue
-            od = spot = None
-            try:
-                for i in azure_prices(f"serviceName eq 'Virtual Machines' and armRegionName eq '{region}' and armSkuName eq '{sku}' and priceType eq 'Consumption'"):
-                    if not i["productName"].startswith("Virtual Machines") or "Windows" in i["productName"] or i["unitOfMeasure"] != "1 Hour":
-                        continue
-                    if "Low Priority" in i["skuName"]:
-                        continue
-                    if "Spot" in i["skuName"]:
-                        spot = min(spot or i["unitPrice"], i["unitPrice"])
-                    else:
-                        od = min(od or i["unitPrice"], i["unitPrice"])
-            except Exception as e:
-                print(f"Azure price lookup failed for {sku} in {region}: {e}", flush=True)
-            self.vm[(region, sku)] = {"od": od, "spot": spot, "at": time.time()}
-
-    def node(self, n):
-        """(hourly USD, spot hourly USD or None, where the price came from)"""
-        t, spot = n["instanceType"], n["spot"]
-        if t in NODE_PRICES:
-            return NODE_PRICES[t], None, "your price (NODE_PRICES)"
-        hit = self.vm.get((n["region"], t))
-        if hit and hit.get("od"):
-            return (hit["spot"] if spot and hit.get("spot") else hit["od"]), hit.get("spot"), f"Azure price list, {n['region']}"
-        if t in LIST_PRICES:
-            od = LIST_PRICES[t]
-            return (od * SPOT_FACTOR if spot else od), od * SPOT_FACTOR, "list price, US region"
-        od = n["cpuCap"] * 0.031611 + n["memCap"] / GIB * 0.004237
-        return (od * SPOT_FACTOR if spot else od), od * SPOT_FACTOR, "estimated from size"
-
-    def azure_disk(self, region, sku):
-        key = (region, sku)
-        if not self._fresh(self.disk.get(key)) and LIVE_PRICES:
-            monthly = None
-            try:
-                for i in azure_prices(f"serviceName eq 'Storage' and armRegionName eq '{region}' and skuName eq '{sku}'"):
-                    if i["meterName"] == f"{sku} Disk" and "Managed Disks" in i["productName"]:
-                        monthly = i["unitPrice"]
-                        break
-            except Exception as e:
-                print(f"Azure disk price lookup failed for {sku}: {e}", flush=True)
-            self.disk[key] = {"monthly": monthly, "at": time.time()}
-        return self.disk[key]["monthly"]
-
-
-PRICING = Pricing()
-
-
-def count_load_balancers():
-    paths = [f"/api/v1/namespaces/{ns}/services" for ns in NAMESPACES] or ["/api/v1/services"]
-    try:
-        return sum(1 for path in paths for s in k8s_list(path)["items"] if s.get("spec", {}).get("type") == "LoadBalancer")
-    except Exception:
-        return 0
-
-
-def price_pvcs(rows, nodes):
-    """Add an estimated monthly price to each PVC, from its StorageClass."""
-    if rows is None:
-        return None
-    classes = {}
-    for sc in (k8s_get_optional("/apis/storage.k8s.io/v1/storageclasses") or {}).get("items", []):
-        default = (sc["metadata"].get("annotations") or {}).get("storageclass.kubernetes.io/is-default-class") == "true"
-        classes[sc["metadata"]["name"]] = sc
-        if default:
-            classes[""] = sc
-    region = next((n["region"] for n in nodes if n["region"]), "")
-    for v in rows:
-        gib = parse_mem(v["size"]) / GIB if v["size"] else 0
-        sc = classes.get(v["storageClass"] or "", {})
-        prov, params = sc.get("provisioner", ""), {k.lower(): str(val) for k, val in (sc.get("parameters") or {}).items()}
-        monthly, source = gib * STORAGE_GB_MONTH, "estimate"
-        if "azure" in prov or "disk.csi.azure.com" in prov:
-            sku = params.get("skuname") or params.get("storageaccounttype") or "StandardSSD_LRS"
-            kind, _, redundancy = sku.partition("_")
-            letter = {"premium": "P", "standardssd": "E", "standard": "S"}.get(kind.lower())
-            tier = next((t for size, t in AZURE_DISK_TIERS if gib <= size), None)
-            if letter == "S" and tier in ("1", "2", "3"):
-                tier = "4"   # standard HDD tiers start at 32 GiB
-            if letter and tier and "file" not in prov:
-                price = PRICING.azure_disk(region, f"{letter}{tier} {redundancy or 'LRS'}")
-                if price:
-                    monthly, source = price, f"Azure {letter}{tier} {redundancy or 'LRS'} disk"
-        elif "ebs" in prov:
-            kind = params.get("type", "gp3" if "csi" in prov else "gp2")
-            monthly, source = gib * EBS_PRICES.get(kind, STORAGE_GB_MONTH), f"EBS {kind}, US list price"
-        v["monthly"], v["priceSource"] = round(monthly, 2), source
-    return rows
 
 
 INSIGHTS = Insights()
@@ -1422,6 +1221,23 @@ def job_view(job):
 
 # ---------- Mattermost alerts ----------
 
+def alert_emoji(a):
+    """A picture for each kind of problem, so the channel is readable at a glance."""
+    reason = (a.get("reason") or "").lower()
+    if a["kind"] == "node":
+        return "🖥️"
+    if a["kind"] == "cert":
+        return "🔐"
+    if a["kind"] == "pvc":
+        return "💾"
+    for words, emoji in ((("oom",), "🧠"), (("crashloop",), "🔁"), (("imagepull", "errimage", "invalidimage"), "📦"),
+                         (("pending", "containercreating"), "⏳"), (("not ready",), "🚦"), (("evicted",), "🧹"),
+                         (("job run",), "⚙️"), (("config",), "🧩"), (("error", "failed"), "💥")):
+        if any(w in reason for w in words):
+            return emoji
+    return "⚠️"
+
+
 class Alerter:
     """Posts new problems and recoveries to Mattermost, once each, with flap protection."""
 
@@ -1488,8 +1304,8 @@ class Alerter:
             self.started = True
             self.active = {k: dict(v, since=now, notified=True) for k, v in cur.items()}
             if cur:
-                self.send(f"#### :information_source: {self._prefix()}KubePulse is watching the cluster. "
-                          f"{len(cur)} problem{'s' if len(cur) != 1 else ''} right now:", list(cur.values()))
+                self.send(f"#### 👋 {self._prefix()}KubePulse is on duty 🩺\n"
+                          f"Found **{len(cur)} problem{'s' if len(cur) != 1 else ''}** already going on:", list(cur.values()))
             return
         new = []
         for k, v in cur.items():
@@ -1512,12 +1328,15 @@ class Alerter:
 
         if new:
             n = len(new)
-            self.send(f"#### :rotating_light: {self._prefix()}{n} new problem{'s' if n != 1 else ''}", new)
+            bad = sum(1 for a in new if a["level"] == "bad")
+            self.send(f"#### 🚨 {self._prefix()}Heads up! {n} new problem{'s' if n != 1 else ''} {'🔥' * min(3, max(1, bad))}", new)
         done = [v for _, v in resolved if v["notified"]]
         if done and ALERT_RESOLVED:
-            lines = [f"**{v['title']}** was {v['reason'].split(' for ')[0]}, lasted {fmt_age(int(now - v['since']))}" for v in done[:15]]
+            lines = [f"💚 **{v['title']}** was {v['reason'].split(' for ')[0]} for {fmt_age(int(now - v['since']))}" for v in done[:15]]
             more = f"\n…and {len(done) - 15} more" if len(done) > 15 else ""
-            self.send(f":white_check_mark: {self._prefix()}Resolved\n" + "\n".join("- " + line for line in lines) + more)
+            everything = not self.active
+            head = "#### ✅ " + self._prefix() + ("All clear, everything is healthy again 🎉" if everything else f"Fixed {len(done)} of them 👍")
+            self.send(head + "\n" + "\n".join(lines) + more)
 
     def _prefix(self):
         return f"[{CLUSTER_NAME}] " if CLUSTER_NAME else ""
@@ -1525,12 +1344,13 @@ class Alerter:
     def _attachment(self, a):
         att = {
             "color": "#e5484d" if a["level"] == "bad" else "#e08a00",
-            "fallback": f"{a['title']}: {a['reason']}",
-            "title": a["title"],
-            "text": f"**{a['reason']}**" + (f"\n{a['detail']}" if a["detail"] else ""),
-            "fields": [{"short": True, "title": k, "value": v} for k, v in a["fields"].items()],
+            "fallback": f"{alert_emoji(a)} {a['title']}: {a['reason']}",
+            "title": f"{alert_emoji(a)} {a['title']}",
+            "text": f"{'🔴' if a['level'] == 'bad' else '🟠'} **{a['reason']}**" + (f"\n> {a['detail']}" if a["detail"] else ""),
+            "fields": [{"short": True, "title": FIELD_EMOJI.get(k, "") + k, "value": v} for k, v in a["fields"].items()],
+            "footer": "💜 KubePulse · Know before it breaks",
         }
-        if DASHBOARD_URL and a["kind"] == "pod":
+        if DASHBOARD_URL and a["kind"] == "pod" and not a.get("example"):
             att["title_link"] = f"{DASHBOARD_URL}/#pod/{a['ns']}/{a['name']}"
         return att
 
@@ -1552,12 +1372,16 @@ class Alerter:
         if time.time() - self.last_test < 60:
             raise BadRequest("A test message was sent less than a minute ago.")
         self.last_test = time.time()
-        self.send(f":white_check_mark: {self._prefix()}Test message from KubePulse. Alerts reach this channel.")
+        self.send(f"#### 🧪 {self._prefix()}Test message from KubePulse\nAlerts reach this channel ✅ Here's what they look like:",
+                  [{"kind": "pod", "ns": "demo", "name": "example-pod", "title": "demo/example-pod", "level": "bad",
+                    "reason": "CrashLoopBackOff · last exit OOMKilled", "detail": "This is only an example, nothing is wrong.",
+                    "fields": {"Node": "node-1", "Restarts": "3"}, "example": True}])
         if self.last_error:
             raise BadRequest(f"Mattermost rejected the message: {self.last_error}")
         return json.dumps({"ok": True, "sentAt": self.last_sent})
 
 
+FIELD_EMOJI = {"Node": "🖥️ ", "Restarts": "🔁 ", "Secret": "🔑 ", "Size": "📏 "}
 ALERTS = Alerter()
 
 

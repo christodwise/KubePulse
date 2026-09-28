@@ -45,11 +45,8 @@ rules:
   - apiGroups: ["cert-manager.io"]
     resources: ["certificates"]
     verbs: ["get", "list"]
-  - apiGroups: ["storage.k8s.io"]
-    resources: ["storageclasses"]      # disk type, for storage cost
-    verbs: ["get", "list"]
-  # Disk usage per PVC comes from the kubelet stats API. nodes/proxy is a powerful
-  # permission, so it's off by default. To enable: uncomment this and set PVC_STATS to "true".
+  # Volume usage normally comes from Prometheus. Without Prometheus it can come from the kubelet, which
+  # needs nodes/proxy: a powerful permission, so it's off. To use it: uncomment this and set PVC_STATS to "true".
   # - apiGroups: [""]
   #   resources: ["nodes/proxy"]
   #   verbs: ["get"]
@@ -89,7 +86,7 @@ spec:
         seccompProfile: { type: RuntimeDefault }
       containers:
         - name: kubepulse
-          image: christoj/kubepulse:0.5.0
+          image: christoj/kubepulse:0.5.1
           ports: [{ containerPort: 8080 }]
           envFrom:
             - secretRef: { name: kubepulse-secrets, optional: true }
@@ -112,17 +109,11 @@ spec:
               value: "14"
             - name: PVC_WARN_PERCENT
               value: "85"
-            - name: PVC_STATS
+            - name: PVC_STATS           # fallback when there's no Prometheus; needs the nodes/proxy rule above
               value: "false"
-            # Cost estimates. Prices are in USD; set COST_CURRENCY + COST_RATE to show another currency
-            # (e.g. AED and 3.6725). NODE_PRICES overrides list prices with your own rates per hour.
-            - name: COST_CURRENCY
-              value: "USD"
-            - name: COST_RATE
-              value: "1"
-            - name: NODE_PRICES           # e.g. '{"Standard_D8s_v6": 0.40, "m5.xlarge": 0.17}'
-              value: ""
-            - name: CONTROL_PLANE_HOURLY  # empty = EKS/GKE 0.10, AKS Free tier 0; AKS Standard tier is 0.10
+            # Volume usage comes from Prometheus, found automatically. Set this if yours has an unusual name,
+            # e.g. http://prometheus-operated.monitoring.svc:9090
+            - name: PROMETHEUS_URL
               value: ""
           readinessProbe:
             httpGet: { path: /healthz, port: 8080 }

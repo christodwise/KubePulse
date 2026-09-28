@@ -386,7 +386,6 @@
   .mini-table td:first-child { white-space: normal; overflow-wrap: anywhere; min-width: 140px; }
   .mini-table.compact th, .mini-table.compact td { padding-left: 8px; padding-right: 8px; }
   .mini-table td:first-child b, .mini-table td:first-child a { overflow-wrap: anywhere; }
-  .cost-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; margin-bottom: 14px; }
   .save { color: var(--ok); font-weight: 600; }
   .cd { font-family: var(--mono); font-weight: 600; color: var(--c); }
   .pvcbar { height: 6px; border-radius: 6px; background: var(--sunken); overflow: hidden; width: 120px; display: inline-block; vertical-align: middle; margin-right: 8px; }
@@ -420,35 +419,6 @@
   .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin: 0 5px 0 12px; vertical-align: -1px; }
   .swatch:first-child { margin-left: 0; }
   .swatch.res { background: color-mix(in srgb, var(--brand) 35%, transparent); } .swatch.use { background: var(--brand); }
-
-  /* Cost */
-  .cost-top { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1.1fr); gap: 14px; margin-bottom: 14px; }
-  .cost-top > .card { padding: 18px; }
-  .cost-hero .big { font-size: 42px; font-weight: 700; letter-spacing: -.04em; line-height: 1.15; }
-  .mid-big { font-size: 26px; font-weight: 700; letter-spacing: -.03em; }
-  .stack { display: flex; height: 12px; border-radius: 12px; overflow: hidden; margin: 16px 0 12px; background: var(--sunken); gap: 2px; }
-  .stack i { display: block; height: 100%; }
-  .parts { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 18px; font-size: 13px; }
-  .parts div { display: flex; align-items: center; gap: 6px; }
-  .parts div .swatch { margin: 0; }
-  .parts b { margin-left: auto; font-weight: 600; }
-  .parts .muted { width: 34px; text-align: right; font-size: 12px; }
-  .saving + .saving { border-top: 1px dashed var(--line); margin-top: 10px; padding-top: 10px; }
-  .saving-top { display: flex; justify-content: space-between; gap: 10px; }
-  .saving-top b { font-weight: 600; }
-  .saving p { margin: 3px 0 0; font-size: 12.5px; color: var(--muted); line-height: 1.5; }
-  .sharecol { white-space: nowrap; font-size: 12px; color: var(--muted); }
-  .sharebar { display: inline-block; width: 80px; height: 6px; border-radius: 6px; background: var(--sunken); overflow: hidden; vertical-align: middle; margin-right: 6px; }
-  .sharebar i { display: block; height: 100%; background: var(--brand); border-radius: 6px; }
-  .idle-row td { background: var(--surface-2); }
-  .idle-row small { color: var(--muted); font-size: 11.5px; margin-left: 4px; }
-  .pilltag { display: inline-block; font-size: 10.5px; font-weight: 600; padding: 0 6px; border-radius: 5px; background: var(--sunken); color: var(--muted); margin-left: 6px; }
-  .howto { padding: 14px 18px; }
-  .howto summary { cursor: pointer; font-weight: 600; }
-  .howto ul { margin: 10px 0 0; padding-left: 20px; color: var(--muted); font-size: 13px; line-height: 1.6; }
-  .howto li b { color: var(--ink); }
-  @media (max-width: 1180px) { .cost-top { grid-template-columns: 1fr 1fr; } .cost-hero { grid-column: 1 / -1; } .statrow { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-  @media (max-width: 760px) { .cost-top { grid-template-columns: 1fr; } .statrow { grid-template-columns: repeat(2, minmax(0, 1fr)); } .parts { grid-template-columns: 1fr; } }
 
   /* Keyboard help */
   .kbd-help { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; background: rgba(8,6,16,.45); }
@@ -519,7 +489,6 @@
     <button class="nav" data-view="pods"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M10 2.5l6.5 3.75v7.5L10 17.5l-6.5-3.75v-7.5z"/><path d="M3.5 6.25L10 10l6.5-3.75M10 10v7.5"/></svg><span class="lbl">Pods</span><span class="badge" id="nb-pods"></span></button>
     <button class="nav" data-view="nodes"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="3" y="3.5" width="14" height="5" rx="1.5"/><rect x="3" y="11.5" width="14" height="5" rx="1.5"/><path d="M6 6h.01M6 14h.01"/></svg><span class="lbl">Nodes</span><span class="badge" id="nb-nodes"></span></button>
     <button class="nav" data-view="insights"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 16.5h14"/><path d="M5.5 13V9M10 13V4.5M14.5 13v-6"/></svg><span class="lbl">Insights</span><span class="badge" id="nb-ins"></span></button>
-    <button class="nav" data-view="cost"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="7.5"/><path d="M12.5 7.2c-.5-.8-1.4-1.2-2.5-1.2-1.4 0-2.5.8-2.5 1.9 0 2.7 5 1.4 5 4.2 0 1.1-1.1 1.9-2.5 1.9-1.2 0-2.2-.5-2.6-1.3M10 4.5v1.5M10 14v1.5"/></svg><span class="lbl">Cost</span><span class="badge" id="nb-cost"></span></button>
     <button class="nav" data-view="events"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M10 3l7.5 13h-15z"/><path d="M10 8.5v3.5M10 14.3h.01" stroke-linecap="round"/></svg><span class="lbl">Events &amp; alerts</span><span class="badge" id="nb-events"></span></button>
     <div class="grow"></div>
     <div class="alertchip" id="alertChip"><span class="dot"></span><div><b>Alerts off</b>Mattermost not set</div></div>
@@ -619,28 +588,6 @@
         <div id="pvcs"></div></div>
     </section>
 
-    <!-- Cost -->
-    <section id="v-cost" hidden>
-      <div class="cost-top">
-        <div class="card cost-hero" id="costHero"></div>
-        <div class="card" id="costDays"></div>
-        <div class="card" id="costSavings"></div>
-      </div>
-      <div class="card" style="margin-bottom:14px"><div class="card-h"><h2>Cost by namespace</h2><span class="grow"></span><span class="muted" id="nsCostSub"></span></div>
-        <p class="explain">Each node's price is shared among the pods on it, by how much CPU and memory they reserve or use, whichever is higher. Storage is added to the namespace that owns the disk. Capacity no pod claims is shown as idle.</p>
-        <div id="nsCost"></div></div>
-      <div class="cost-grid">
-        <div class="card"><div class="card-h"><h2>Nodes</h2><span class="muted">what each machine costs</span></div>
-          <p class="explain"><b>Claimed</b> is how much of the node's price is covered by pods; the rest is idle. The spot column shows what the same machine costs as a spot VM, which the cloud can take back at short notice.</p>
-          <div id="nodeCost"></div></div>
-        <div class="card"><div class="card-h"><h2>Top workloads by cost</h2></div>
-          <p class="explain">The Deployments, StatefulSets and other workloads that cost the most, with the cost per pod.</p>
-          <div id="wlCost"></div></div>
-      </div>
-      <div class="card" style="margin-bottom:14px"><div class="card-h"><h2>Storage</h2><span class="muted" id="storSub"></span></div><div id="storCost"></div></div>
-      <div class="card"><details class="howto"><summary>How these numbers are calculated</summary><div id="costHow"></div></details></div>
-    </section>
-
     <!-- Events & alerts -->
     <section id="v-events" hidden>
       <div class="grid2" style="grid-template-columns: minmax(0, 1.6fr) minmax(300px, 1fr); align-items: start">
@@ -699,14 +646,14 @@
 <div class="kbd-help" id="kbdHelp" hidden><div class="card"><h3>Keyboard shortcuts</h3>
   <div class="k"><span>Search pods</span><kbd>/</kbd></div><div class="k"><span>Problems only</span><kbd>p</kbd></div>
   <div class="k"><span>Switch theme</span><kbd>t</kbd></div><div class="k"><span>Wallboard / full screen</span><kbd>f</kbd></div>
-  <div class="k"><span>Sound alerts on / off</span><kbd>s</kbd></div><div class="k"><span>Go to Overview · Pods · Nodes · Insights · Cost · Events</span><kbd>1–6</kbd></div>
+  <div class="k"><span>Sound alerts on / off</span><kbd>s</kbd></div><div class="k"><span>Go to Overview · Pods · Nodes · Insights · Events</span><kbd>1–5</kbd></div>
   <div class="k"><span>Close panel or wallboard</span><kbd>Esc</kbd></div><div class="k"><span>This help</span><kbd>?</kbd></div></div></div>
 
 <script>
 const SUN = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="3"/><path d="M8 1v1.5M8 13.5V15M1 8h1.5M13.5 8H15M3 3l1 1M12 12l1 1M3 13l1-1M12 4l1-1"/></svg>';
 const MOON = '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M13.5 10.2A6 6 0 0 1 5.8 2.5a6 6 0 1 0 7.7 7.7z"/></svg>';
 const CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M7.5 12.5l3 3 6-6.5"/></svg>';
-const VIEWS = { overview: "Overview", pods: "Pods", nodes: "Nodes", insights: "Insights", cost: "Cost", events: "Events & alerts" };
+const VIEWS = { overview: "Overview", pods: "Pods", nodes: "Nodes", insights: "Insights", events: "Events & alerts" };
 const SPEAKER_ON = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 6v4h2.5l3.5 3V3L5 6z"/><path d="M11 5.5a3.5 3.5 0 0 1 0 5M12.8 3.5a6 6 0 0 1 0 9"/></svg>';
 const SPEAKER_OFF = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 6v4h2.5l3.5 3V3L5 6z"/><path d="M11 6l3.5 4M14.5 6L11 10"/></svg>';
 
@@ -813,7 +760,6 @@ function renderShell(s) {
   $("nb-nodes").textContent = data.nodes.length;
   $("nb-events").textContent = data.warnings ? data.warnings.length : "";
   $("nb-ins").textContent = insightFlags() || "";
-  $("nb-cost").textContent = data.cost ? money(data.cost.monthly) : "";
   const a = data.alerts || {};
   $("alertChip").innerHTML = a.enabled
     ? `<span class="dot pulse ${a.lastError ? "bad-c" : "ok-c"}"></span><div><b>${a.lastError ? "Alert delivery failing" : "Alerts on"}</b>${a.lastError ? "Check the webhook" : `Mattermost · ${a.active} active`}</div>`
@@ -905,7 +851,6 @@ function renderNodes() {
     return `<div class="card ncard"><div class="mnode-h"><b title="${esc(n.name)}">${esc(shortNode(n.name))}</b><span class="tag ${lvlClass(lvl)}">${label}</span></div>
       <div class="sub">${esc(n.roles || "node")} · ${esc(n.version)} · up ${fmtAge(n.age)}${shortNode(n.name) !== n.name ? `<br>${esc(n.name)}` : ""}</div>
       ${metric("CPU", n.cpu, n.cpuAlloc, fmtCpu, n.hist?.cpu)}${metric("Memory", n.mem, n.memAlloc, fmtMem, n.hist?.mem)}
-      ${(() => { const cn = data.cost?.nodes.find((x) => x.name === n.name); return cn ? `<div class="metric"><div class="k">Cost<b>${money(cn.hourly * 730)}</b>per month</div><div class="muted" style="font-size:12.5px">${esc(cn.instanceType)} · ${cn.spot ? "spot" : "on-demand"} · ${Math.round(cn.allocatedPct)}% claimed by pods<br>${esc(cn.source)}</div></div>` : ""; })()}
       <div class="metric"><div class="k">Pods<b>${n.pods}</b>of ${n.podsAlloc}</div><div class="muted" style="font-size:12.5px">${bad ? `<span class="hot">${bad} need attention</span>` : "All healthy"}</div></div></div>`;
   }).join("") || '<div class="empty">No nodes returned by the API.</div>';
 }
@@ -948,13 +893,6 @@ function insightFlags() {
   return findings().filter((f) => f.lvl === "bad" || f.lvl === "warn").length;
 }
 
-// Money in the configured currency (prices are kept in USD on the server)
-function money(usd, digits) {
-  const c = data.cost || {}, v = (usd || 0) * (c.rate || 1);
-  const d = digits ?? (Math.abs(v) < 10 ? 2 : 0);
-  try { return new Intl.NumberFormat(undefined, { style: "currency", currency: c.currency || "USD", minimumFractionDigits: 0, maximumFractionDigits: d }).format(v); }
-  catch { return `${c.currency || "USD"} ${v.toFixed(d)}`; }
-}
 const ownerName = (o) => o.split("/").slice(1).join("/") || o;
 const ownerKind = (o) => o.includes("/") ? o.split("/")[0] : "Pod";
 const pct = (a, b) => b ? Math.min(999, a / b * 100) : null;
@@ -970,7 +908,7 @@ function nodeCapacity() {
 // Plain-language findings, most serious first. Each can link to a pod or a page.
 function findings() {
   const out = [], add = (lvl, title, detail, link) => out.push({ lvl, title, detail, link });
-  const ins = data.insights || {}, tl = ins.timeline, cost = data.cost;
+  const ins = data.insights || {}, tl = ins.timeline;
 
   const bad = data.pods.filter((p) => p.level === "bad");
   if (bad.length) add("bad", `${plural(bad.length, "pod")} failing right now`,
@@ -1017,13 +955,6 @@ function findings() {
       `New pods that need more ${c >= m ? "CPU" : "memory"} than what's left won't fit on it, even though actual use is lower.`, { view: "nodes", label: "See nodes" });
   });
 
-  if (cost) {
-    const topWaste = [...(cost.savings.wasteRows || [])].sort((a, b) => b.monthly - a.monthly)[0];
-    if (cost.savings.rightsize >= 5) add("info", `Right-sizing requests could save about ${money(cost.savings.rightsize)} a month`,
-      topWaste ? `The biggest is ${ownerName(topWaste.owner)} in ${topWaste.namespace} (${money(topWaste.monthly)} a month). See Resource waste below.` : "", { view: "cost", label: "See cost" });
-    if (cost.idle.percent >= 30) add("info", `${cost.idle.percent.toFixed(0)}% of node capacity is idle (${money(cost.idle.monthly)} a month)`,
-      "You're paying for capacity no pod has reserved. Fewer or smaller nodes, or the cluster autoscaler, could cut this.", { view: "cost", label: "See cost" });
-  }
   const today = (ins.uptime || []).at(-1);
   if (today && today.score < 99) add(today.score < 95 ? "warn" : "info", `Today's uptime score is ${today.score.toFixed(1)}%`, "That's the share of pods that were healthy, averaged over every check today.");
 
@@ -1049,7 +980,7 @@ function findingsHtml(list) {
 }
 
 function renderInsights() {
-  const ins = data.insights || {}, cost = data.cost;
+  const ins = data.insights || {};
   $("findings").innerHTML = findingsHtml(findings());
 
   // Uptime score
@@ -1110,25 +1041,21 @@ function renderInsights() {
     const e = nsMap.get(p.namespace) || { pods: 0, bad: 0, restarts: 0, cpu: 0, mem: 0 };
     e.pods++; e.bad += p.level !== "ok"; e.restarts += p.restarts; e.cpu += p.cpu || 0; e.mem += p.mem || 0; nsMap.set(p.namespace, e);
   });
-  const nsCost = new Map((cost?.namespaces || []).map((r) => [r.namespace, r.monthly]));
-  $("nsTable").innerHTML = `<div class="tablewrap"><table class="mini-table compact"><thead><tr><th>Namespace</th><th class="num">Pods</th><th class="num">Unhealthy</th><th class="num">Restarts</th><th class="num">CPU</th><th class="num">Memory</th>${cost ? '<th class="num">Per month</th>' : ""}</tr></thead><tbody>
-    ${[...nsMap].sort((a, b) => (nsCost.get(b[0]) || b[1].pods) - (nsCost.get(a[0]) || a[1].pods)).map(([ns, e]) => `<tr>
+  $("nsTable").innerHTML = `<div class="tablewrap"><table class="mini-table compact"><thead><tr><th>Namespace</th><th class="num">Pods</th><th class="num">Unhealthy</th><th class="num">Restarts</th><th class="num">CPU</th><th class="num">Memory</th></tr></thead><tbody>
+    ${[...nsMap].sort((a, b) => b[1].pods - a[1].pods).map(([ns, e]) => `<tr>
       <td><a class="linkbtn" href="#pods?ns=${enc(ns)}">${esc(ns)}</a></td><td class="num">${e.pods}</td><td class="num ${e.bad ? "hot" : "muted"}">${e.bad}</td>
-      <td class="num ${e.restarts ? "" : "muted"}">${e.restarts}</td><td class="num">${fmtCpu(e.cpu) || "–"}</td><td class="num">${fmtMem(e.mem) || "–"}</td>
-      ${cost ? `<td class="num">${nsCost.has(ns) ? money(nsCost.get(ns)) : "–"}</td>` : ""}</tr>`).join("")}</tbody></table></div>
+      <td class="num ${e.restarts ? "" : "muted"}">${e.restarts}</td><td class="num">${fmtCpu(e.cpu) || "–"}</td><td class="num">${fmtMem(e.mem) || "–"}</td></tr>`).join("")}</tbody></table></div>
     <div class="card-foot">Restarts are totals since each pod started. Click a namespace to see its pods.</div>`;
 
   // Resource waste, with the money it would save
   const waste = ins.waste || [];
-  const saves = new Map((cost?.savings.wasteRows || []).map((r) => [r.namespace + " " + r.owner, r.monthly]));
-  const totalSave = [...saves.values()].reduce((a, b) => a + b, 0);
-  $("wasteTotal").textContent = waste.length ? (cost ? `≈ ${money(totalSave)} / month to save` : `${plural(waste.length, "workload")}`) : "";
+  const cpuW = waste.reduce((a, r) => a + r.cpuWaste, 0), memW = waste.reduce((a, r) => a + r.memWaste, 0);   // totals per workload
+  $("wasteTotal").textContent = waste.length ? `≈ ${fmtCpu(cpuW)} CPU · ${fmtMem(memW)} could be freed` : "";
   $("waste").innerHTML = !data.metricsAvailable ? '<div class="empty">Needs metrics-server to measure real usage.</div>'
-    : waste.length ? `<div class="tablewrap"><table class="mini-table"><thead><tr><th>Workload</th><th class="num">CPU reserved → used</th><th class="num">Memory reserved → peak</th><th class="num">Suggested request</th>${cost ? '<th class="num">Saves / month</th>' : ""}</tr></thead><tbody>
+    : waste.length ? `<div class="tablewrap"><table class="mini-table"><thead><tr><th>Workload</th><th class="num">CPU reserved → used</th><th class="num">Memory reserved → peak</th><th class="num">Suggested request</th></tr></thead><tbody>
       ${waste.map((r) => `<tr><td><b>${esc(ownerName(r.owner))}</b><small>${esc(r.namespace)} · ${plural(r.pods, "pod")}</small></td>
         <td class="num">${fmtCpu(r.cpuReq)} → ${fmtCpu(r.cpuUsed)}</td><td class="num">${fmtMem(r.memReq)} → ${fmtMem(r.memPeak)}</td>
-        <td class="num save">${r.cpuWaste ? fmtCpu(r.cpuSuggest) + " CPU" : ""}${r.cpuWaste && r.memWaste ? " · " : ""}${r.memWaste ? fmtMem(r.memSuggest) : ""}</td>
-        ${cost ? `<td class="num save">${money(saves.get(r.namespace + " " + r.owner) || 0)}</td>` : ""}</tr>`).join("")}</tbody></table></div>
+        <td class="num save">${r.cpuWaste ? fmtCpu(r.cpuSuggest) + " CPU" : ""}${r.cpuWaste && r.memWaste ? " · " : ""}${r.memWaste ? fmtMem(r.memSuggest) : ""}</td></tr>`).join("")}</tbody></table></div>
       <div class="card-foot">Per pod. Based on CPU averaged and memory at its peak since KubePulse started, with 50% (CPU) and 30% (memory) headroom.</div>`
     : `<div class="empty">${CHECK}<b>Nothing oversized</b>Requests look close to real usage. This needs about 5 minutes of data after KubePulse starts.</div>`;
 
@@ -1169,106 +1096,17 @@ function renderInsights() {
 
   // Volumes
   const pvcs = data.pvcs;
-  $("pvcSub").textContent = data.pvcStats ? "disk usage from the kubelet" : "size and cost; usage needs PVC_STATS=true";
+  $("pvcSub").textContent = data.volumeSource ? `space used, from ${data.volumeSource}` : "sizes only: no Prometheus found (see README)";
   $("pvcs").innerHTML = pvcs == null ? '<div class="empty">KubePulse can\'t list PersistentVolumeClaims.</div>'
     : !pvcs.length ? '<div class="empty">No PersistentVolumeClaims.</div>'
-    : `<div class="tablewrap"><table class="mini-table"><thead><tr><th>Volume</th><th>Status</th><th>Used</th><th class="num">Size</th><th>Storage class</th>${cost ? '<th class="num">Cost / month</th>' : ""}</tr></thead><tbody>
+    : `<div class="tablewrap"><table class="mini-table"><thead><tr><th>Volume</th><th>Status</th><th>Used</th><th class="num">Size</th><th>Storage class</th></tr></thead><tbody>
       ${pvcs.slice(0, 40).map((v) => {
         const l = v.percent == null ? "muted" : v.percent >= 90 ? "bad" : v.percent >= 75 ? "warn" : "ok";
         return `<tr><td><b>${esc(v.name)}</b><small>${esc(v.namespace)}${v.pod ? " · " + esc(v.pod) : ""}</small></td>
           <td><span class="tag ${lvlClass(v.phase === "Bound" ? "ok" : "warn")}">${esc(v.phase)}</span></td>
           <td class="${lvlClass(l)}">${v.percent == null ? '<span class="muted">–</span>' : `<span class="pvcbar"><i style="width:${v.percent}%"></i></span>${v.percent.toFixed(0)}% · ${fmtMem(v.used)}`}</td>
-          <td class="num">${esc(v.size || "–")}</td><td class="muted">${esc(v.storageClass || "–")}</td>
-          ${cost ? `<td class="num">${v.monthly != null ? money(v.monthly) : "–"}</td>` : ""}</tr>`;
+          <td class="num">${esc(v.size || "–")}</td><td class="muted">${esc(v.storageClass || "–")}</td></tr>`;
       }).join("")}</tbody></table></div>`;
-}
-
-// ---------- Cost ----------
-
-const PART_LABEL = { nodes: "Nodes", storage: "Disks", loadBalancers: "Load balancers", controlPlane: "Control plane" };
-const PART_COLOR = { nodes: "var(--brand)", storage: "var(--info)", loadBalancers: "var(--warn)", controlPlane: "var(--ok)" };
-
-function renderCost() {
-  const c = data.cost;
-  if (!c) {
-    ["costHero", "costDays", "costSavings", "nsCost", "nodeCost", "wlCost", "storCost"].forEach((id) => $(id).innerHTML = "");
-    $("costHero").innerHTML = '<div class="empty">Cost estimates appear after the first full read of the cluster.</div>';
-    return;
-  }
-  const sources = [...new Set(c.nodes.map((n) => n.source))];
-  const parts = Object.entries(c.parts).filter(([, v]) => v > 0);
-
-  $("costHero").innerHTML = `<div class="muted" style="font-size:12.5px">Estimated cost · per month</div>
-    <div class="big">${money(c.monthly)}</div>
-    <div class="muted" style="font-size:13.5px">≈ ${money(c.monthly / 30.4)} per day · ${money(c.hourly, 2)} per hour</div>
-    <div class="stack">${parts.map(([k, v]) => `<i style="width:${v / c.monthly * 100}%;background:${PART_COLOR[k]}" title="${PART_LABEL[k]}: ${money(v)}"></i>`).join("")}</div>
-    <div class="parts">${parts.map(([k, v]) => `<div><span class="swatch" style="background:${PART_COLOR[k]}"></span>${PART_LABEL[k]}${k === "loadBalancers" ? ` (${c.loadBalancerCount})` : ""}<b>${money(v)}</b><span class="muted">${Math.round(v / c.monthly * 100)}%</span></div>`).join("")}</div>
-    <div class="card-foot" style="padding:12px 0 0">Prices: ${esc(sources.join(" · "))}. List prices, excluding network traffic, backups, and any reservation or savings-plan discounts.</div>`;
-
-  const days = c.days || [], maxDay = Math.max(1e-9, ...days.map((d) => d.spend));
-  const today = days.at(-1);
-  $("costDays").innerHTML = `<div class="card-h" style="padding:0 0 4px"><h2>Daily spend</h2><span class="grow"></span><span class="muted">while KubePulse runs</span></div>
-    <div class="muted" style="font-size:13px">Today so far</div><div class="mid-big">${today ? money(today.spend) : "–"}</div>
-    <div class="days">${days.map((d) => `<div style="--c:var(--brand)" title="${d.day}: ${money(d.spend, 2)}"><span>${money(d.spend)}</span><i style="height:${Math.max(4, d.spend / maxDay * 100)}%"></i>
-      <span>${new Date(d.day + "T12:00").toLocaleDateString([], { weekday: "short" })}</span></div>`).join("")}</div>
-    ${days.length < 7 ? `<div class="muted" style="font-size:11.5px;margin-top:8px">Adds up the estimated cost every ${data.pollSeconds}s, so the first day is partial. ${days.length} of 7 days so far.</div>` : ""}`;
-
-  // Savings, each explained
-  const s = c.savings, candidates = c.nodes.filter((n) => !n.systemPool);
-  const cheapest = candidates.sort((a, b) => a.hourly - b.hourly)[0];
-  const idleTip = cheapest && s.idle >= cheapest.hourly * 730 && c.nodes.length > 1
-    ? `That's more than one ${esc(cheapest.instanceType)} node (${money(cheapest.hourly * 730)}), so the cluster could probably run with one node fewer.`
-    : "Some headroom is healthy; a cluster autoscaler keeps it from growing.";
-  const items = [
-    ["Right-size requests", s.rightsize, s.rightsize >= 1 ? `${plural(s.wasteRows.length, "workload")} reserve far more than they use. Lower their requests to the suggested values on the Insights page.` : "Requests are close to real usage (needs about 5 minutes of data after KubePulse starts)."],
-    ["Idle capacity", s.idle, `${c.idle.percent.toFixed(0)}% of what you pay for nodes isn't claimed by any pod. ${idleTip}`],
-    ["Spot VMs", s.spot, s.spot >= 1 ? "Estimated saving if the stateless nodes ran as spot VMs. Only for apps that tolerate a node being taken away at short notice."
-      : "Every node runs system pods or pods with persistent volumes, so spot isn't a safe fit as the cluster is. A separate spot node pool for stateless apps could still save money."],
-  ];
-  $("costSavings").innerHTML = `<div class="card-h" style="padding:0 0 8px"><h2>Ways to save</h2></div>${items.map(([t, v, d]) => `<div class="saving">
-      <div class="saving-top"><b>${t}</b><span class="${v >= 1 ? "save" : "muted"}">${v >= 1 ? "≈ " + money(v) + " / mo" : "–"}</span></div><p>${d}</p></div>`).join("")}`;
-
-  // By namespace, plus idle and shared rows so everything adds up to the total
-  const shared = c.parts.loadBalancers + c.parts.controlPlane;
-  const nsRows = c.namespaces.filter((r) => r.monthly >= 0.005);
-  const maxNs = Math.max(1e-9, ...nsRows.map((r) => r.monthly), c.idle.monthly);
-  const row = (name, r, cls = "") => `<tr class="${cls}"><td>${name}</td><td class="num">${r.pods ?? ""}</td><td class="num">${r.cpu != null ? fmtCpu(r.cpu) : ""}</td><td class="num">${r.mem != null ? fmtMem(r.mem) : ""}</td>
-      <td class="num">${r.compute != null ? money(r.compute) : ""}</td><td class="num">${r.storage ? money(r.storage) : r.storage === 0 ? '<span class="muted">–</span>' : ""}</td>
-      <td class="num"><b>${money(r.monthly)}</b></td><td class="sharecol"><span class="sharebar"><i style="width:${r.monthly / maxNs * 100}%"></i></span>${Math.round(r.monthly / c.monthly * 100)}%</td></tr>`;
-  $("nsCostSub").textContent = `${plural(nsRows.length, "namespace")} · ${money(c.monthly)} total`;
-  $("nsCost").innerHTML = `<div class="tablewrap"><table class="mini-table cost-table"><thead><tr><th>Namespace</th><th class="num">Pods</th><th class="num">CPU claimed</th><th class="num">Memory claimed</th><th class="num">Compute</th><th class="num">Disks</th><th class="num">Per month</th><th>Share</th></tr></thead><tbody>
-    ${nsRows.map((r) => row(`<a class="linkbtn" href="#pods?ns=${enc(r.namespace)}">${esc(r.namespace)}</a>`, r)).join("")}
-    ${row('<span class="muted">Idle capacity</span> <small>paid for, not claimed by any pod</small>', { monthly: c.idle.monthly, compute: c.idle.monthly }, "idle-row")}
-    ${shared > 0 ? row('<span class="muted">Shared</span> <small>control plane and load balancers</small>', { monthly: shared }, "idle-row") : ""}
-    </tbody></table></div>
-    <div class="card-foot">"Claimed" is each pod's request or its real usage, whichever is higher. Pods without requests only claim what they use.</div>`;
-
-  $("nodeCost").innerHTML = `<div class="tablewrap"><table class="mini-table"><thead><tr><th>Node</th><th class="num">Per month</th><th class="num">Claimed</th><th class="num">As spot</th></tr></thead><tbody>
-    ${c.nodes.map((n) => `<tr><td><b title="${esc(n.name)}">${esc(shortNode(n.name))}</b><small>${esc(n.instanceType)}${n.zone ? " · " + esc(n.zone) : ""} · ${n.spot ? "spot" : "on-demand"}
-        ${n.systemPool ? '<span class="pilltag">system pool</span>' : ""}${n.stateful ? '<span class="pilltag">has volumes</span>' : ""}</small><small class="muted">${esc(n.source)} · ${money(n.hourly, 3)}/h</small></td>
-      <td class="num"><b>${money(n.hourly * 730)}</b></td>
-      <td class="num"><span class="sharebar"><i style="width:${Math.min(100, n.allocatedPct)}%"></i></span>${Math.round(n.allocatedPct)}%</td>
-      <td class="num muted">${n.spot ? "already spot" : n.spotHourly ? money(n.spotHourly * 730) : "–"}</td></tr>`).join("")}</tbody></table></div>`;
-
-  $("wlCost").innerHTML = `<div class="tablewrap"><table class="mini-table"><thead><tr><th>Workload</th><th class="num">Pods</th><th class="num">Per pod</th><th class="num">Per month</th></tr></thead><tbody>
-    ${c.workloads.map((w) => `<tr><td><b>${esc(ownerName(w.owner))}</b><small>${esc(w.namespace)} · ${esc(ownerKind(w.owner))} · ${fmtCpu(w.cpu)} CPU, ${fmtMem(w.mem)}</small></td>
-      <td class="num">${w.pods}</td><td class="num">${money(w.monthly / w.pods)}</td><td class="num"><b>${money(w.monthly)}</b></td></tr>`).join("")}</tbody></table></div>`;
-
-  const disks = (data.pvcs || []).filter((v) => v.monthly != null).sort((a, b) => b.monthly - a.monthly);
-  $("storSub").textContent = disks.length ? `${plural(disks.length, "disk")} · ${money(c.parts.storage)} per month` : "";
-  $("storCost").innerHTML = disks.length ? `<div class="tablewrap"><table class="mini-table"><thead><tr><th>Volume</th><th class="num">Size</th><th>Priced as</th><th class="num">Per month</th></tr></thead><tbody>
-    ${disks.slice(0, 25).map((v) => `<tr><td><b>${esc(v.name)}</b><small>${esc(v.namespace)}${v.pod ? " · " + esc(v.pod) : ""}</small></td><td class="num">${esc(v.size || "–")}</td>
-      <td class="muted">${esc(v.priceSource || "")}</td><td class="num"><b>${money(v.monthly)}</b></td></tr>`).join("")}</tbody></table></div>`
-    : '<div class="empty">No persistent volumes.</div>';
-
-  $("costHow").innerHTML = `<ul>
-    <li><b>Node prices</b>: ${c.provider === "azure" ? "Azure's public price list for your region, refreshed daily. " : ""}Otherwise built-in list prices, or an estimate from the node's CPU and memory. Set <code>NODE_PRICES</code> to use your own rates, e.g. <code>{"Standard_D8s_v6": 0.40}</code> after discounts.</li>
-    <li><b>Sharing a node's price</b>: split into a CPU part and a memory part, then shared among its pods by what they claim: request or usage, whichever is higher. What's left over is idle.</li>
-    <li><b>Disks</b>: priced from each PVC's size and StorageClass${c.provider === "azure" ? " (Azure managed-disk tiers)" : ""}.</li>
-    <li><b>Load balancers</b>: base price only (${c.loadBalancerCount} LoadBalancer services); traffic is billed on top.</li>
-    <li><b>Control plane</b>: ${c.controlPlaneAuto ? (c.provider === "azure" ? "AKS Free tier assumed ($0). Set CONTROL_PLANE_HOURLY=0.10 for the Standard tier." : "EKS and GKE charge $0.10 per hour.") : "set by CONTROL_PLANE_HOURLY."}</li>
-    <li><b>Currency</b>: shown in ${esc(c.currency)}${c.rate !== 1 ? ` at ${c.rate} per USD` : ""}. Change it with <code>COST_CURRENCY</code> and <code>COST_RATE</code>.</li>
-    <li>Not included: network traffic, backups, public IPs beyond load balancers, monitoring and other cloud services outside the cluster.</li></ul>`;
 }
 
 function renderEvents() {
@@ -1402,7 +1240,7 @@ function render() {
   if (!data) return;
   const s = summary();
   renderShell(s);
-  ({ overview: () => renderOverview(s), pods: renderPods, nodes: renderNodes, insights: renderInsights, cost: renderCost, events: renderEvents })[view]();
+  ({ overview: () => renderOverview(s), pods: renderPods, nodes: renderNodes, insights: renderInsights, events: renderEvents })[view]();
   if (wall) renderWall(s);
 }
 
@@ -1761,7 +1599,7 @@ document.addEventListener("keydown", (e) => {
   else if (drawer || wall) return;
   else if (k === "/") { e.preventDefault(); setView("pods"); $("q").focus(); }
   else if (k === "p") { if (view !== "pods") setView("pods"); toggleOnlyBad(); }
-  else if (k >= "1" && k <= "6") setView(Object.keys(VIEWS)[+k - 1]);
+  else if (k >= "1" && k <= "5") setView(Object.keys(VIEWS)[+k - 1]);
 });
 $("kbdHelp").addEventListener("click", () => $("kbdHelp").hidden = true);
 $("q").addEventListener("input", () => { syncUrl(); data && renderPods(); });
