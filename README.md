@@ -2,7 +2,7 @@
 
 <h1 align="center">KubePulse</h1>
 <p align="center"><b>Know before it breaks.</b><br>
-A small, read-only Kubernetes dashboard with a live cluster map, a NOC wallboard, Mattermost alerts and AI root-cause investigation.</p>
+A small, read-only Kubernetes dashboard with a live cluster map, cost estimates, a NOC wallboard, Mattermost alerts and AI root-cause investigation.</p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/python-3.12-blue" alt="Python 3.12">
@@ -29,14 +29,21 @@ Kubernetes. The screenshots use demo data.
 - **AI investigation**: the AI works like an on-call engineer. It reads the logs, checks the owning Deployment and its recent rollouts, compares sibling pods, checks the node, services / endpoints and the ConfigMaps and volumes the pod uses, then reports the verdict, evidence, impact and the exact fix. Read-only; passwords, tokens and keys are removed before anything is sent
 
 **Spot patterns**
-- **Insights**: 24-hour restart timeline, daily uptime score with a 7-day trend, top offenders by restarts / CPU / memory, **resource waste** (requests far above real usage, with suggested values), recent changes (new pods and rollouts), short-lived pods, cert-manager certificate expiry and PVC usage
+- **Insights** starts with *What KubePulse noticed*: a plain-language list of what matters, most serious first, each linked to the pod or page to look at. Below it, every card explains what it shows and what to do:
+  24-hour restart timeline with the numbers behind it, daily uptime score with a 7-day trend, top offenders (with usage against each pod's own limits),
+  node capacity (reserved vs used), namespaces at a glance, **resource waste** with suggested requests and the money each would save,
+  recent changes, short-lived pods, cert-manager certificate expiry and volumes
+
+**Know what it costs**
+- **Cost**: estimated monthly and daily cost, split into nodes, disks, load balancers and control plane; cost per namespace and per workload; idle capacity you pay for but don't use; each node's price and its spot price; and concrete ways to save (right-sizing, idle nodes, spot)
+- On **AKS**, node and disk prices come live from Azure's public price list for your region. On EKS and GKE, built-in list prices are used; set your own negotiated rates with `NODE_PRICES`. Any currency via `COST_CURRENCY` and `COST_RATE`
 
 **Get told when something breaks**
 - **Mattermost alerts** for failing pods, pods stuck pending or not ready, OOM kills, nodes going NotReady, certificates about to expire, volumes filling up, and recoveries. Each problem alerts once; flapping problems are held back
 - **Wallboard / NOC mode** for an office TV: big status, heartbeat line, the map and a 24-hour view that rotate, active incidents, and the whole screen turns red when something is critical
 - Optional **sound**: a monitor beep when a pod starts failing, a flatline when a node goes down, a chime when everything recovers. Browsers only allow audio after a click, so after a reload the wallboard shows *Tap to enable sound*
 
-**Keyboard**: `/` search · `p` problems only · `t` theme · `f` wallboard · `s` sound · `1`–`5` pages · `?` help
+**Keyboard**: `/` search · `p` problems only · `t` theme · `f` wallboard · `s` sound · `1`–`6` pages · `?` help
 
 ## Screenshots
 
@@ -48,9 +55,13 @@ Kubernetes. The screenshots use demo data.
 
 ![Wallboard](docs/screenshots/wallboard.png)
 
-| Insights | Dark mode |
+| Insights | Cost |
 |---|---|
-| ![Insights](docs/screenshots/insights.png) | ![Dark mode](docs/screenshots/overview-dark.png) |
+| ![Insights](docs/screenshots/insights.png) | ![Cost](docs/screenshots/cost.png) |
+
+**Dark mode**
+
+![Dark mode](docs/screenshots/overview-dark.png)
 
 ## Quick start
 
@@ -85,6 +96,13 @@ Set these in the Deployment in `kubepulse.yaml`. Every setting is optional.
 | `OPENAI_MODEL` | `gpt-4o-mini` | Model used for AI investigation |
 | `OPENAI_BASE_URL` | OpenAI | Any OpenAI-compatible chat completions API |
 | `AI_MAX_STEPS` | `8` | Maximum tool-calling rounds per investigation |
+| `COST_CURRENCY` | `USD` | Currency to show costs in, e.g. `AED`, `INR`, `EUR` |
+| `COST_RATE` | `1` | How many of `COST_CURRENCY` per US dollar, e.g. `3.6725` for AED |
+| `NODE_PRICES` | empty | Your own node prices in USD per hour, as JSON: `{"Standard_D8s_v6": 0.40, "m5.xlarge": 0.17}` |
+| `LIVE_PRICES` | `true` | Use Azure's public price list for AKS nodes and disks |
+| `CONTROL_PLANE_HOURLY` | auto | EKS / GKE $0.10, AKS Free tier $0. Set `0.10` for AKS Standard tier |
+| `STORAGE_GB_MONTH` | `0.10` | Disk price per GiB-month when the disk type isn't known |
+| `SPOT_FACTOR` | `0.3` | Spot price as a share of on-demand, when the real spot price isn't known |
 
 Secrets go in the `kubepulse-secrets` Secret:
 
@@ -97,7 +115,15 @@ Secrets go in the `kubepulse-secrets` Secret:
 `OPENAI_BASE_URL=https://api.anthropic.com/v1`, an Anthropic key in `OPENAI_API_KEY`, and
 `OPENAI_MODEL=claude-sonnet-5`. (Not tested yet.)
 
-The pod needs outbound HTTPS to Mattermost and to the AI provider.
+The pod needs outbound HTTPS to Mattermost and to the AI provider, and on AKS to `prices.azure.com` for live prices.
+
+## How costs are estimated
+
+- **Node price**: Azure's live price list (AKS), built-in list prices (EKS, GKE), or an estimate from the node's CPU and memory. `NODE_PRICES` always wins, so you can use the rates from your own bill
+- **Sharing it out**: each node's price is split into a CPU part and a memory part, then shared among its pods by what they *claim*: their request or their real usage, whichever is higher (the same method as OpenCost). Whatever no pod claims is **idle capacity**
+- **Disks** are priced from each PVC's size and StorageClass (Azure managed-disk tiers, or EBS gp3 / gp2 / io1)
+- **Load balancers** at their base price; the **control plane** at the provider's fee
+- **Not included**: network traffic, backups, reservations or savings plans, and cloud services outside the cluster. Treat the numbers as a good estimate, not your invoice
 
 ## Exposing it
 
@@ -119,6 +145,7 @@ KubePulse is read-only. It can't change anything in the cluster and it can't rea
 | services, endpoints, configmaps, persistentvolumeclaims | AI investigation and volume list |
 | metrics.k8s.io | CPU and memory usage (needs metrics-server) |
 | cert-manager.io certificates | Certificate expiry |
+| storageclasses | Disk type, for storage cost |
 | nodes/proxy *(off by default)* | PVC disk usage. This is a powerful permission, so it's commented out |
 
 ## How it works

@@ -45,6 +45,9 @@ rules:
   - apiGroups: ["cert-manager.io"]
     resources: ["certificates"]
     verbs: ["get", "list"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["storageclasses"]      # disk type, for storage cost
+    verbs: ["get", "list"]
   # Disk usage per PVC comes from the kubelet stats API. nodes/proxy is a powerful
   # permission, so it's off by default. To enable: uncomment this and set PVC_STATS to "true".
   # - apiGroups: [""]
@@ -86,7 +89,7 @@ spec:
         seccompProfile: { type: RuntimeDefault }
       containers:
         - name: kubepulse
-          image: christoj/kubepulse:0.4.5
+          image: christoj/kubepulse:0.5.0
           ports: [{ containerPort: 8080 }]
           envFrom:
             - secretRef: { name: kubepulse-secrets, optional: true }
@@ -111,6 +114,16 @@ spec:
               value: "85"
             - name: PVC_STATS
               value: "false"
+            # Cost estimates. Prices are in USD; set COST_CURRENCY + COST_RATE to show another currency
+            # (e.g. AED and 3.6725). NODE_PRICES overrides list prices with your own rates per hour.
+            - name: COST_CURRENCY
+              value: "USD"
+            - name: COST_RATE
+              value: "1"
+            - name: NODE_PRICES           # e.g. '{"Standard_D8s_v6": 0.40, "m5.xlarge": 0.17}'
+              value: ""
+            - name: CONTROL_PLANE_HOURLY  # empty = EKS/GKE 0.10, AKS Free tier 0; AKS Standard tier is 0.10
+              value: ""
           readinessProbe:
             httpGet: { path: /healthz, port: 8080 }
           livenessProbe:

@@ -382,12 +382,73 @@
   .mini-table th { background: none; font-size: 11.5px; padding: 8px 12px; }
   .mini-table td { padding: 8px 12px; }
   .mini-table td small { display: block; color: var(--muted); font-size: 11.5px; }
+  /* Long names wrap instead of pushing the numbers out of view */
+  .mini-table td:first-child { white-space: normal; overflow-wrap: anywhere; min-width: 140px; }
+  .mini-table.compact th, .mini-table.compact td { padding-left: 8px; padding-right: 8px; }
+  .mini-table td:first-child b, .mini-table td:first-child a { overflow-wrap: anywhere; }
+  .cost-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; margin-bottom: 14px; }
   .save { color: var(--ok); font-weight: 600; }
   .cd { font-family: var(--mono); font-weight: 600; color: var(--c); }
   .pvcbar { height: 6px; border-radius: 6px; background: var(--sunken); overflow: hidden; width: 120px; display: inline-block; vertical-align: middle; margin-right: 8px; }
   .pvcbar i { display: block; height: 100%; background: var(--c); }
   .newtag { font-size: 10.5px; font-weight: 700; color: var(--info); background: color-mix(in srgb, var(--info) 12%, transparent); padding: 1px 6px; border-radius: 5px; margin-left: 6px; vertical-align: 1px; }
   .card-foot { padding: 0 18px 14px; font-size: 12px; color: var(--muted); }
+
+  /* Plain-language explanations and findings */
+  .explain { margin: 6px 18px 12px; font-size: 13px; line-height: 1.55; color: var(--muted); max-width: 900px; }
+  .explain b { color: var(--ink); font-weight: 600; }
+  .finding { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; gap: 12px; align-items: start; padding: 12px 10px; border-radius: 10px; }
+  .finding + .finding { border-top: 1px solid var(--line); border-radius: 0; }
+  .finding .fi { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: 13px; color: #fff; background: var(--c); }
+  .finding.bad { --c: var(--bad); } .finding.warn { --c: var(--warn); } .finding.info { --c: var(--info); } .finding.ok { --c: var(--ok); }
+  .finding b { font-weight: 600; } .finding p { margin: 2px 0 0; font-size: 13px; color: var(--muted); line-height: 1.5; }
+  .finding .linkbtn { white-space: nowrap; padding-top: 3px; text-decoration: none; }
+  a.linkbtn { text-decoration: none; }
+  .statrow { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 1px; margin: 12px 18px 4px; background: var(--line); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  .statrow div { background: var(--surface); padding: 10px 12px; min-width: 0; }
+  .statrow span { display: block; font-size: 11.5px; color: var(--muted); }
+  .statrow b { display: block; font-size: 17px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .statrow b .linkbtn { font-size: 14px; }
+  .caps { display: grid; gap: 10px; padding: 0 18px; }
+  .capnode { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; background: var(--surface-2); }
+  .cap + .cap { margin-top: 8px; }
+  .cap-top { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--muted); }
+  .cap-top b { color: var(--ink); }
+  .capbar { position: relative; height: 8px; border-radius: 8px; background: var(--sunken); overflow: hidden; margin-top: 4px; }
+  .capbar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 8px; }
+  .capbar .res { background: color-mix(in srgb, var(--brand) 35%, transparent); } .capbar .use { background: var(--brand); height: 4px; top: 2px; }
+  .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin: 0 5px 0 12px; vertical-align: -1px; }
+  .swatch:first-child { margin-left: 0; }
+  .swatch.res { background: color-mix(in srgb, var(--brand) 35%, transparent); } .swatch.use { background: var(--brand); }
+
+  /* Cost */
+  .cost-top { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1.1fr); gap: 14px; margin-bottom: 14px; }
+  .cost-top > .card { padding: 18px; }
+  .cost-hero .big { font-size: 42px; font-weight: 700; letter-spacing: -.04em; line-height: 1.15; }
+  .mid-big { font-size: 26px; font-weight: 700; letter-spacing: -.03em; }
+  .stack { display: flex; height: 12px; border-radius: 12px; overflow: hidden; margin: 16px 0 12px; background: var(--sunken); gap: 2px; }
+  .stack i { display: block; height: 100%; }
+  .parts { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 18px; font-size: 13px; }
+  .parts div { display: flex; align-items: center; gap: 6px; }
+  .parts div .swatch { margin: 0; }
+  .parts b { margin-left: auto; font-weight: 600; }
+  .parts .muted { width: 34px; text-align: right; font-size: 12px; }
+  .saving + .saving { border-top: 1px dashed var(--line); margin-top: 10px; padding-top: 10px; }
+  .saving-top { display: flex; justify-content: space-between; gap: 10px; }
+  .saving-top b { font-weight: 600; }
+  .saving p { margin: 3px 0 0; font-size: 12.5px; color: var(--muted); line-height: 1.5; }
+  .sharecol { white-space: nowrap; font-size: 12px; color: var(--muted); }
+  .sharebar { display: inline-block; width: 80px; height: 6px; border-radius: 6px; background: var(--sunken); overflow: hidden; vertical-align: middle; margin-right: 6px; }
+  .sharebar i { display: block; height: 100%; background: var(--brand); border-radius: 6px; }
+  .idle-row td { background: var(--surface-2); }
+  .idle-row small { color: var(--muted); font-size: 11.5px; margin-left: 4px; }
+  .pilltag { display: inline-block; font-size: 10.5px; font-weight: 600; padding: 0 6px; border-radius: 5px; background: var(--sunken); color: var(--muted); margin-left: 6px; }
+  .howto { padding: 14px 18px; }
+  .howto summary { cursor: pointer; font-weight: 600; }
+  .howto ul { margin: 10px 0 0; padding-left: 20px; color: var(--muted); font-size: 13px; line-height: 1.6; }
+  .howto li b { color: var(--ink); }
+  @media (max-width: 1180px) { .cost-top { grid-template-columns: 1fr 1fr; } .cost-hero { grid-column: 1 / -1; } .statrow { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+  @media (max-width: 760px) { .cost-top { grid-template-columns: 1fr; } .statrow { grid-template-columns: repeat(2, minmax(0, 1fr)); } .parts { grid-template-columns: 1fr; } }
 
   /* Keyboard help */
   .kbd-help { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; background: rgba(8,6,16,.45); }
@@ -458,6 +519,7 @@
     <button class="nav" data-view="pods"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M10 2.5l6.5 3.75v7.5L10 17.5l-6.5-3.75v-7.5z"/><path d="M3.5 6.25L10 10l6.5-3.75M10 10v7.5"/></svg><span class="lbl">Pods</span><span class="badge" id="nb-pods"></span></button>
     <button class="nav" data-view="nodes"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="3" y="3.5" width="14" height="5" rx="1.5"/><rect x="3" y="11.5" width="14" height="5" rx="1.5"/><path d="M6 6h.01M6 14h.01"/></svg><span class="lbl">Nodes</span><span class="badge" id="nb-nodes"></span></button>
     <button class="nav" data-view="insights"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 16.5h14"/><path d="M5.5 13V9M10 13V4.5M14.5 13v-6"/></svg><span class="lbl">Insights</span><span class="badge" id="nb-ins"></span></button>
+    <button class="nav" data-view="cost"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="7.5"/><path d="M12.5 7.2c-.5-.8-1.4-1.2-2.5-1.2-1.4 0-2.5.8-2.5 1.9 0 2.7 5 1.4 5 4.2 0 1.1-1.1 1.9-2.5 1.9-1.2 0-2.2-.5-2.6-1.3M10 4.5v1.5M10 14v1.5"/></svg><span class="lbl">Cost</span><span class="badge" id="nb-cost"></span></button>
     <button class="nav" data-view="events"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M10 3l7.5 13h-15z"/><path d="M10 8.5v3.5M10 14.3h.01" stroke-linecap="round"/></svg><span class="lbl">Events &amp; alerts</span><span class="badge" id="nb-events"></span></button>
     <div class="grow"></div>
     <div class="alertchip" id="alertChip"><span class="dot"></span><div><b>Alerts off</b>Mattermost not set</div></div>
@@ -519,20 +581,64 @@
 
     <!-- Insights -->
     <section id="v-insights" hidden>
+      <div class="card" style="margin-bottom:14px"><div class="card-h"><h2>What KubePulse noticed</h2><span class="muted">a plain-language summary of this page, most important first</span></div>
+        <div class="list" id="findings"></div></div>
       <div class="ins-top">
         <div class="card uptime" id="uptime"></div>
-        <div class="card tl-card"><div class="card-h"><h2>Restart timeline</h2><span class="muted">last 24 hours, 15-minute slots</span><span class="grow"></span><span class="muted" id="tlPeak"></span></div>
+        <div class="card tl-card"><div class="card-h"><h2>Restart timeline</h2><span class="muted">last 24 hours</span><span class="grow"></span><span class="muted" id="tlPeak"></span></div>
+          <p class="explain">When a container crashes or runs out of memory, Kubernetes restarts it. Each bar is a 15-minute slot; taller means more restarts. Spikes at the same time every day usually point to a scheduled job, a backup or a traffic peak.</p>
           <div id="timeline"></div>
-          <div class="tl-legend"><span class="ok-c" style="--c:var(--brand)"><i></i>Restarts</span><span style="--c:var(--warn)"><i></i>of which OOMKilled</span><span style="--c:var(--bad)"><i></i>Pod started failing</span></div></div>
+          <div class="tl-legend"><span style="--c:var(--brand)"><i></i>Restarts</span><span style="--c:var(--warn)"><i></i>of which OOMKilled (out of memory)</span><span style="--c:var(--bad)"><i></i>A pod started failing</span></div>
+          <div class="statrow" id="tlStats"></div></div>
       </div>
-      <div class="card" style="margin-bottom:14px"><div class="card-h"><h2>Top offenders</h2><span class="muted">the noisiest pods right now</span></div><div class="offenders" id="offenders"></div></div>
+      <div class="card" style="margin-bottom:14px"><div class="card-h"><h2>Top offenders</h2><span class="muted">the noisiest pods right now</span></div>
+        <p class="explain">Pods that restart the most, and pods using the most CPU and memory. The small percentage shows usage against the pod's own limit: a pod close to 100% of its memory limit is about to be OOMKilled.</p>
+        <div class="offenders" id="offenders"></div></div>
       <div class="ins-grid">
-        <div class="card"><div class="card-h"><h2>Resource waste</h2><span class="muted">requests far above real usage</span><span class="grow"></span><span class="save" id="wasteTotal"></span></div><div id="waste"></div></div>
-        <div class="card"><div class="card-h"><h2>Recent changes</h2><span class="muted">pods created in the last hour</span></div><div class="list" id="changes"></div></div>
-        <div class="card"><div class="card-h"><h2>Short-lived pods</h2><span class="muted">workloads that keep replacing pods</span></div><div id="churn"></div></div>
-        <div class="card"><div class="card-h"><h2>Certificates</h2><span class="muted">cert-manager, soonest expiry first</span></div><div id="certs"></div></div>
+        <div class="card"><div class="card-h"><h2>Node capacity</h2><span class="muted">reserved vs actually used</span></div>
+          <p class="explain"><b>Reserved</b> is what pods ask for (requests); it decides whether new pods fit. <b>Used</b> is what they really consume. A node near 100% reserved can't take more pods even if it looks quiet; a big gap between the two means you're paying for capacity nobody uses.</p>
+          <div id="capacity"></div></div>
+        <div class="card"><div class="card-h"><h2>Namespaces at a glance</h2></div>
+          <p class="explain">Each namespace's pods, health, restarts and resource use, so you can see which team or app is noisy or expensive.</p>
+          <div id="nsTable"></div></div>
+        <div class="card" style="grid-column: 1 / -1"><div class="card-h"><h2>Resource waste</h2><span class="grow"></span><span class="save" id="wasteTotal"></span></div>
+          <p class="explain">Workloads that reserve far more CPU or memory than they use. Reserved capacity is paid for and blocks other pods even when it sits idle. Lower the requests toward the suggested values in steps, and watch for slowdowns.</p>
+          <div id="waste"></div></div>
+        <div class="card"><div class="card-h"><h2>Recent changes</h2><span class="muted">pods created in the last hour</span></div>
+          <p class="explain">New pods from rollouts, scaling or restarts, grouped by workload. If a problem started recently, look here first: a change that lines up with unhealthy pods is the usual suspect.</p>
+          <div class="list" id="changes"></div></div>
+        <div class="card"><div class="card-h"><h2>Short-lived pods</h2><span class="muted">pods that keep being replaced</span></div>
+          <p class="explain">Workloads that created many more pods than they need in the last 24 hours. Their pods may look Running right now but don't live long; common causes are failing liveness probes, evictions and crash-looping rollouts.</p>
+          <div id="churn"></div></div>
+        <div class="card"><div class="card-h"><h2>Certificates</h2><span class="muted">soonest expiry first</span></div>
+          <p class="explain">TLS certificates managed by cert-manager. It renews them automatically well before expiry (about 30 days for Let's Encrypt), so a certificate with less than two weeks left usually means renewal is failing.</p>
+          <div id="certs"></div></div>
       </div>
-      <div class="card"><div class="card-h"><h2>Volumes</h2><span class="muted" id="pvcSub"></span></div><div id="pvcs"></div></div>
+      <div class="card"><div class="card-h"><h2>Volumes</h2><span class="muted" id="pvcSub"></span></div>
+        <p class="explain">Persistent disks used by databases, queues and other stateful apps. A full disk usually stops the app outright, so act before 90%.</p>
+        <div id="pvcs"></div></div>
+    </section>
+
+    <!-- Cost -->
+    <section id="v-cost" hidden>
+      <div class="cost-top">
+        <div class="card cost-hero" id="costHero"></div>
+        <div class="card" id="costDays"></div>
+        <div class="card" id="costSavings"></div>
+      </div>
+      <div class="card" style="margin-bottom:14px"><div class="card-h"><h2>Cost by namespace</h2><span class="grow"></span><span class="muted" id="nsCostSub"></span></div>
+        <p class="explain">Each node's price is shared among the pods on it, by how much CPU and memory they reserve or use, whichever is higher. Storage is added to the namespace that owns the disk. Capacity no pod claims is shown as idle.</p>
+        <div id="nsCost"></div></div>
+      <div class="cost-grid">
+        <div class="card"><div class="card-h"><h2>Nodes</h2><span class="muted">what each machine costs</span></div>
+          <p class="explain"><b>Claimed</b> is how much of the node's price is covered by pods; the rest is idle. The spot column shows what the same machine costs as a spot VM, which the cloud can take back at short notice.</p>
+          <div id="nodeCost"></div></div>
+        <div class="card"><div class="card-h"><h2>Top workloads by cost</h2></div>
+          <p class="explain">The Deployments, StatefulSets and other workloads that cost the most, with the cost per pod.</p>
+          <div id="wlCost"></div></div>
+      </div>
+      <div class="card" style="margin-bottom:14px"><div class="card-h"><h2>Storage</h2><span class="muted" id="storSub"></span></div><div id="storCost"></div></div>
+      <div class="card"><details class="howto"><summary>How these numbers are calculated</summary><div id="costHow"></div></details></div>
     </section>
 
     <!-- Events & alerts -->
@@ -593,14 +699,14 @@
 <div class="kbd-help" id="kbdHelp" hidden><div class="card"><h3>Keyboard shortcuts</h3>
   <div class="k"><span>Search pods</span><kbd>/</kbd></div><div class="k"><span>Problems only</span><kbd>p</kbd></div>
   <div class="k"><span>Switch theme</span><kbd>t</kbd></div><div class="k"><span>Wallboard / full screen</span><kbd>f</kbd></div>
-  <div class="k"><span>Sound alerts on / off</span><kbd>s</kbd></div><div class="k"><span>Go to Overview · Pods · Nodes · Insights · Events</span><kbd>1–5</kbd></div>
+  <div class="k"><span>Sound alerts on / off</span><kbd>s</kbd></div><div class="k"><span>Go to Overview · Pods · Nodes · Insights · Cost · Events</span><kbd>1–6</kbd></div>
   <div class="k"><span>Close panel or wallboard</span><kbd>Esc</kbd></div><div class="k"><span>This help</span><kbd>?</kbd></div></div></div>
 
 <script>
 const SUN = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="3"/><path d="M8 1v1.5M8 13.5V15M1 8h1.5M13.5 8H15M3 3l1 1M12 12l1 1M3 13l1-1M12 4l1-1"/></svg>';
 const MOON = '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M13.5 10.2A6 6 0 0 1 5.8 2.5a6 6 0 1 0 7.7 7.7z"/></svg>';
 const CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M7.5 12.5l3 3 6-6.5"/></svg>';
-const VIEWS = { overview: "Overview", pods: "Pods", nodes: "Nodes", insights: "Insights", events: "Events & alerts" };
+const VIEWS = { overview: "Overview", pods: "Pods", nodes: "Nodes", insights: "Insights", cost: "Cost", events: "Events & alerts" };
 const SPEAKER_ON = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 6v4h2.5l3.5 3V3L5 6z"/><path d="M11 5.5a3.5 3.5 0 0 1 0 5M12.8 3.5a6 6 0 0 1 0 9"/></svg>';
 const SPEAKER_OFF = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 6v4h2.5l3.5 3V3L5 6z"/><path d="M11 6l3.5 4M14.5 6L11 10"/></svg>';
 
@@ -707,6 +813,7 @@ function renderShell(s) {
   $("nb-nodes").textContent = data.nodes.length;
   $("nb-events").textContent = data.warnings ? data.warnings.length : "";
   $("nb-ins").textContent = insightFlags() || "";
+  $("nb-cost").textContent = data.cost ? money(data.cost.monthly) : "";
   const a = data.alerts || {};
   $("alertChip").innerHTML = a.enabled
     ? `<span class="dot pulse ${a.lastError ? "bad-c" : "ok-c"}"></span><div><b>${a.lastError ? "Alert delivery failing" : "Alerts on"}</b>${a.lastError ? "Check the webhook" : `Mattermost · ${a.active} active`}</div>`
@@ -798,6 +905,7 @@ function renderNodes() {
     return `<div class="card ncard"><div class="mnode-h"><b title="${esc(n.name)}">${esc(shortNode(n.name))}</b><span class="tag ${lvlClass(lvl)}">${label}</span></div>
       <div class="sub">${esc(n.roles || "node")} · ${esc(n.version)} · up ${fmtAge(n.age)}${shortNode(n.name) !== n.name ? `<br>${esc(n.name)}` : ""}</div>
       ${metric("CPU", n.cpu, n.cpuAlloc, fmtCpu, n.hist?.cpu)}${metric("Memory", n.mem, n.memAlloc, fmtMem, n.hist?.mem)}
+      ${(() => { const cn = data.cost?.nodes.find((x) => x.name === n.name); return cn ? `<div class="metric"><div class="k">Cost<b>${money(cn.hourly * 730)}</b>per month</div><div class="muted" style="font-size:12.5px">${esc(cn.instanceType)} · ${cn.spot ? "spot" : "on-demand"} · ${Math.round(cn.allocatedPct)}% claimed by pods<br>${esc(cn.source)}</div></div>` : ""; })()}
       <div class="metric"><div class="k">Pods<b>${n.pods}</b>of ${n.podsAlloc}</div><div class="muted" style="font-size:12.5px">${bad ? `<span class="hot">${bad} need attention</span>` : "All healthy"}</div></div></div>`;
   }).join("") || '<div class="empty">No nodes returned by the API.</div>';
 }
@@ -837,43 +945,192 @@ function offendersHtml(limit = 5) {
 }
 
 function insightFlags() {
-  const i = data.insights || {};
-  return (i.churn?.length || 0) + (data.certs || []).filter((c) => c.daysLeft != null && c.daysLeft < 14).length
-    + (data.pvcs || []).filter((v) => v.percent >= 85 || v.phase !== "Bound").length;
+  return findings().filter((f) => f.lvl === "bad" || f.lvl === "warn").length;
+}
+
+// Money in the configured currency (prices are kept in USD on the server)
+function money(usd, digits) {
+  const c = data.cost || {}, v = (usd || 0) * (c.rate || 1);
+  const d = digits ?? (Math.abs(v) < 10 ? 2 : 0);
+  try { return new Intl.NumberFormat(undefined, { style: "currency", currency: c.currency || "USD", minimumFractionDigits: 0, maximumFractionDigits: d }).format(v); }
+  catch { return `${c.currency || "USD"} ${v.toFixed(d)}`; }
+}
+const ownerName = (o) => o.split("/").slice(1).join("/") || o;
+const ownerKind = (o) => o.includes("/") ? o.split("/")[0] : "Pod";
+const pct = (a, b) => b ? Math.min(999, a / b * 100) : null;
+
+// Reserved (requests) and used, per node
+function nodeCapacity() {
+  return data.nodes.map((n) => {
+    const pods = data.pods.filter((p) => p.node === n.name && !["Succeeded", "Completed"].includes(p.status) && p.kind !== "finished");
+    return { n, cpuReq: pods.reduce((a, p) => a + (p.cpuReq || 0), 0), memReq: pods.reduce((a, p) => a + (p.memReq || 0), 0) };
+  });
+}
+
+// Plain-language findings, most serious first. Each can link to a pod or a page.
+function findings() {
+  const out = [], add = (lvl, title, detail, link) => out.push({ lvl, title, detail, link });
+  const ins = data.insights || {}, tl = ins.timeline, cost = data.cost;
+
+  const bad = data.pods.filter((p) => p.level === "bad");
+  if (bad.length) add("bad", `${plural(bad.length, "pod")} failing right now`,
+    bad.slice(0, 3).map((p) => `${p.name}: ${p.attention}`).join(" · ") + (bad.length > 3 ? ` · and ${bad.length - 3} more` : ""),
+    bad.length === 1 ? { pod: bad[0] } : { view: "pods", label: "See failing pods", hash: "pods?problems=1" });
+  data.nodes.filter((n) => !n.ready).forEach((n) => add("bad", `Node ${shortNode(n.name)} is not ready`, "Pods on it can't run until it recovers or is replaced.", { view: "nodes", label: "See nodes" }));
+  data.nodes.filter((n) => n.ready && n.pressure?.length).forEach((n) => add("warn", `Node ${shortNode(n.name)} is under ${n.pressure.join(" and ").replace(/Pressure/g, " pressure").toLowerCase()}`,
+    "Kubernetes may start evicting pods from it. Check which pods use the most memory or disk there.", { view: "nodes", label: "See nodes" }));
+
+  const nearLimit = data.pods.filter((p) => p.mem && p.memLimit && p.mem / p.memLimit >= 0.9);
+  if (nearLimit.length) add("warn", `${plural(nearLimit.length, "pod")} using over 90% of their memory limit`,
+    `${nearLimit.slice(0, 3).map((p) => `${p.name} (${Math.round(p.mem / p.memLimit * 100)}%)`).join(", ")}. These are likely to be OOMKilled soon; raise the limit or look for a leak.`,
+    nearLimit.length === 1 ? { pod: nearLimit[0] } : null);
+
+  if (tl) {
+    const total = tl.restarts.reduce((a, b) => a + b, 0), ooms = tl.oomkills.reduce((a, b) => a + b, 0);
+    if (total) {
+      const byOwner = new Map();
+      data.pods.filter((p) => p.lastExitAge != null && p.lastExitAge < 86400).forEach((p) => {
+        const k = p.namespace + "/" + ownerName(p.owner || "Pod/" + p.name); byOwner.set(k, (byOwner.get(k) || 0) + 1);
+      });
+      const top = [...byOwner].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k]) => k).join(", ");
+      add(ooms && ooms >= total / 2 ? "warn" : "info", `${plural(total, "restart")} in the last 24 hours`,
+        (ooms ? `${ooms} of them were OOMKilled (out of memory), so memory limits are probably too low. ` : "") + (top ? `Most affected: ${top}.` : ""));
+      const peak = Math.max(...tl.restarts), at = tl.restarts.indexOf(peak);
+      if (peak >= 3 && peak >= total * 0.4) {
+        const t = new Date((tl.start + at * tl.bucketSeconds) * 1000), fmt = (d) => d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+        add("info", `Restarts bunch up around ${fmt(t)}`, `${peak} of the ${total} restarts happened between ${fmt(t)} and ${fmt(new Date(t.getTime() + tl.bucketSeconds * 1000))}. Look for a scheduled job, backup or traffic peak at that time.`);
+      }
+    }
+  }
+  (data.certs || []).filter((c) => c.daysLeft != null && c.daysLeft < 14).forEach((c) =>
+    add(c.daysLeft < 3 ? "bad" : "warn", c.daysLeft <= 0 ? `Certificate ${c.name} has expired` : `Certificate ${c.name} expires in ${Math.floor(c.daysLeft)} days`,
+      `${c.dnsNames.join(", ")}. cert-manager should have renewed it by now; check the Certificate's events and the issuer.`));
+  (data.pvcs || []).filter((v) => v.percent >= 85).forEach((v) => add(v.percent >= 95 ? "bad" : "warn", `Volume ${v.name} is ${v.percent.toFixed(0)}% full`,
+    `${v.namespace}${v.pod ? ", used by " + v.pod : ""}. Expand the PVC or clean up old data before the app stops writing.`, v.pod ? { pod: { namespace: v.namespace, name: v.pod } } : null));
+  (data.pvcs || []).filter((v) => v.phase && v.phase !== "Bound").forEach((v) => add("warn", `Volume ${v.name} is ${v.phase}`, "It isn't attached to a disk yet, so the pod that needs it can't start."));
+  (ins.churn || []).slice(0, 2).forEach((r) => add("warn", `${ownerName(r.owner)} keeps replacing its pods`,
+    `${r.created24h} pods created in 24 hours for ${plural(r.replicas, "replica")}${r.medianLife ? `, living about ${fmtAge(r.medianLife)} each` : ""}. Check its liveness probe and events.`));
+
+  nodeCapacity().forEach(({ n, cpuReq, memReq }) => {
+    const c = pct(cpuReq, n.cpuAlloc), m = pct(memReq, n.memAlloc);
+    if (c >= 90 || m >= 90) add("warn", `Node ${shortNode(n.name)} is ${Math.round(Math.max(c, m))}% reserved`,
+      `New pods that need more ${c >= m ? "CPU" : "memory"} than what's left won't fit on it, even though actual use is lower.`, { view: "nodes", label: "See nodes" });
+  });
+
+  if (cost) {
+    const topWaste = [...(cost.savings.wasteRows || [])].sort((a, b) => b.monthly - a.monthly)[0];
+    if (cost.savings.rightsize >= 5) add("info", `Right-sizing requests could save about ${money(cost.savings.rightsize)} a month`,
+      topWaste ? `The biggest is ${ownerName(topWaste.owner)} in ${topWaste.namespace} (${money(topWaste.monthly)} a month). See Resource waste below.` : "", { view: "cost", label: "See cost" });
+    if (cost.idle.percent >= 30) add("info", `${cost.idle.percent.toFixed(0)}% of node capacity is idle (${money(cost.idle.monthly)} a month)`,
+      "You're paying for capacity no pod has reserved. Fewer or smaller nodes, or the cluster autoscaler, could cut this.", { view: "cost", label: "See cost" });
+  }
+  const today = (ins.uptime || []).at(-1);
+  if (today && today.score < 99) add(today.score < 95 ? "warn" : "info", `Today's uptime score is ${today.score.toFixed(1)}%`, "That's the share of pods that were healthy, averaged over every check today.");
+
+  // A recent rollout that lines up with unhealthy pods
+  const recentBad = data.pods.filter((p) => p.age != null && p.age < 3600 && p.level !== "ok" && p.owner);
+  const owners = [...new Set(recentBad.map((p) => p.namespace + " " + p.owner))].slice(0, 2);
+  owners.forEach((k) => { const [ns, owner] = k.split(" "); add("warn", `${ownerName(owner)} was changed recently and has unhealthy pods`, `New pods in ${ns} in the last hour aren't healthy; the latest rollout is a likely cause.`, { pod: recentBad.find((p) => p.namespace === ns && p.owner === owner) }); });
+
+  const rank = { bad: 0, warn: 1, info: 2, ok: 3 };
+  out.sort((a, b) => rank[a.lvl] - rank[b.lvl]);
+  if (!out.length) add("ok", "Nothing stands out", "No failing pods, no restart spikes, no expiring certificates or full volumes. Your cluster looks healthy.");
+  return out;
+}
+
+const FIND_ICON = { bad: "!", warn: "!", info: "i", ok: "✓" };
+function findingsHtml(list) {
+  return list.map((f) => {
+    const link = f.link?.pod ? `<button class="linkbtn" ${podAttrs(f.link.pod.namespace, f.link.pod.name)}>Open pod →</button>`
+      : f.link?.hash ? `<a class="linkbtn" href="#${f.link.hash}">${f.link.label} →</a>`
+      : f.link?.view ? `<button class="linkbtn" data-view="${f.link.view}">${f.link.label} →</button>` : "";
+    return `<div class="finding ${f.lvl}"><span class="fi">${FIND_ICON[f.lvl]}</span><div><b>${esc(f.title)}</b>${f.detail ? `<p>${esc(f.detail)}</p>` : ""}</div>${link}</div>`;
+  }).join("");
 }
 
 function renderInsights() {
-  const ins = data.insights || {};
+  const ins = data.insights || {}, cost = data.cost;
+  $("findings").innerHTML = findingsHtml(findings());
+
   // Uptime score
   const up = ins.uptime || [], today = up.at(-1);
   const lvl = (s) => s >= 99 ? "ok" : s >= 95 ? "warn" : "bad";
+  const avg = up.length ? up.reduce((a, d) => a + d.score, 0) / up.length : null, worst = up.length ? up.reduce((a, d) => d.score < a.score ? d : a) : null;
   $("uptime").className = "card uptime " + lvlClass(today ? lvl(today.score) : "muted");
   $("uptime").innerHTML = `<div class="muted" style="font-size:12.5px">Uptime score · today</div>
-    <div class="big">${today ? today.score.toFixed(1) + "%" : "–"}</div><div class="muted" style="font-size:13px">of pods healthy, averaged over the day</div>
+    <div class="big">${today ? today.score.toFixed(1) + "%" : "–"}</div>
+    <div class="muted" style="font-size:13px;line-height:1.5">The share of pods that were healthy, averaged over every check today. 99% or more is good.</div>
     <div class="days">${up.map((d) => `<div class="${lvlClass(lvl(d.score))}" title="${d.day}: ${d.score.toFixed(2)}%">
       <span>${d.score.toFixed(0)}</span><i style="height:${Math.max(6, (d.score - 80) / 20 * 100)}%"></i>
       <span>${new Date(d.day + "T12:00").toLocaleDateString([], { weekday: "short" })}</span></div>`).join("")}</div>
-    ${up.length < 7 ? `<div class="muted" style="font-size:11.5px;margin-top:8px">Trend fills in as KubePulse runs (${up.length} of 7 days so far).</div>` : ""}`;
-  // Restart timeline
+    <div class="kvs" style="margin-bottom:0"><span>${up.length}-day average</span><b>${avg != null ? avg.toFixed(1) + "%" : "–"}</b>
+      <span>Worst day</span><b>${worst ? `${new Date(worst.day + "T12:00").toLocaleDateString([], { weekday: "long" })}, ${worst.score.toFixed(1)}%` : "–"}</b></div>
+    ${up.length < 7 ? `<div class="muted" style="font-size:11.5px;margin-top:8px">The trend fills in as KubePulse runs (${up.length} of 7 days so far).</div>` : ""}`;
+
+  // Restart timeline + the numbers behind it
   const tl = ins.timeline;
   $("timeline").innerHTML = timelineSvg(tl);
   if (tl) {
-    const peak = tl.restarts.indexOf(Math.max(...tl.restarts)), total = tl.restarts.reduce((a, b) => a + b, 0);
-    $("tlPeak").textContent = total ? `${plural(total, "restart")} · busiest ${new Date((tl.start + peak * tl.bucketSeconds) * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "No restarts in 24h";
+    const total = tl.restarts.reduce((a, b) => a + b, 0), ooms = tl.oomkills.reduce((a, b) => a + b, 0), crashes = tl.crashes.reduce((a, b) => a + b, 0);
+    const peak = tl.restarts.indexOf(Math.max(...tl.restarts)), peakAt = new Date((tl.start + peak * tl.bucketSeconds) * 1000);
+    const last = data.pods.filter((p) => p.lastExitAge != null && p.lastExitAge < 86400).sort((a, b) => b.restarts - a.restarts)[0];
+    $("tlPeak").textContent = total ? `${plural(total, "restart")}` : "No restarts";
+    $("tlStats").innerHTML = [
+      ["Restarts", total], ["Out of memory", ooms], ["Pods started failing", crashes],
+      ["Busiest time", total ? peakAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "–"],
+      ["Most restarted", last ? `<button class="linkbtn" ${podAttrs(last.namespace, last.name)} title="${esc(last.name)}">${esc(ownerName(last.owner || "Pod/" + last.name))}</button>` : "–"],
+    ].map(([k, v]) => `<div><span>${k}</span><b>${v}</b></div>`).join("");
   }
-  $("offenders").innerHTML = offendersHtml();
 
-  // Resource waste
+  // Top offenders, with usage against the pod's own limits
+  const col = (title, key, fmt, extra) => {
+    const rows = data.pods.filter((p) => p[key] > 0).sort((a, b) => b[key] - a[key]).slice(0, 5);
+    return `<div><h3>${title}</h3>${rows.length ? rows.map((p, i) => `<button class="off" ${podAttrs(p.namespace, p.name)}><span class="n">${i + 1}</span>
+      <span class="t">${esc(p.name)}<small>${esc(p.namespace)}${extra(p) ? " · " + extra(p) : ""}</small></span><span class="v ${key === "restarts" ? "hot" : ""}">${fmt(p[key])}</span></button>`).join("")
+      : `<div class="muted" style="padding:8px 10px;font-size:13px">${key === "restarts" ? "No restarts" : "No metrics"}</div>`}</div>`;
+  };
+  $("offenders").innerHTML = col("Restarts", "restarts", String, (p) => p.lastReason ? `last: ${esc(p.lastReason)}${p.lastExitAge != null ? `, ${fmtAge(p.lastExitAge)} ago` : ""}` : "")
+    + col("CPU", "cpu", fmtCpu, (p) => p.cpuReq ? `${Math.round(p.cpu / p.cpuReq * 100)}% of request` : "no request set")
+    + col("Memory", "mem", fmtMem, (p) => p.memLimit ? `<span class="${p.mem / p.memLimit >= 0.9 ? "hot" : ""}">${Math.round(p.mem / p.memLimit * 100)}% of limit</span>` : "no limit set");
+
+  // Node capacity: reserved vs used
+  $("capacity").innerHTML = `<div class="caps">${nodeCapacity().map(({ n, cpuReq, memReq }) => {
+    const bar = (label, req, used, total, fmt) => {
+      const r = pct(req, total), u = used != null ? pct(used, total) : null;
+      return `<div class="cap"><div class="cap-top"><span>${label}</span><span><b class="${r >= 90 ? "hot" : ""}">${r != null ? Math.round(r) + "%" : "–"}</b> reserved · ${u != null ? Math.round(u) + "% used" : "usage n/a"} <span class="muted">of ${fmt(total)}</span></span></div>
+        <div class="capbar"><i class="res" style="width:${Math.min(100, r || 0)}%"></i><i class="use" style="width:${Math.min(100, u || 0)}%"></i></div></div>`;
+    };
+    return `<div class="capnode"><div class="mnode-h"><b title="${esc(n.name)}">${esc(shortNode(n.name))}</b><span class="muted" style="font-size:12px">${esc(n.instanceType || "")}</span></div>
+      ${bar("CPU", cpuReq, n.cpu, n.cpuAlloc, fmtCpu)}${bar("Memory", memReq, n.mem, n.memAlloc, fmtMem)}</div>`;
+  }).join("")}</div><div class="card-foot"><span class="swatch res"></span>Reserved by pod requests <span class="swatch use"></span>Actually used</div>`;
+
+  // Namespaces at a glance
+  const nsMap = new Map();
+  data.pods.forEach((p) => {
+    const e = nsMap.get(p.namespace) || { pods: 0, bad: 0, restarts: 0, cpu: 0, mem: 0 };
+    e.pods++; e.bad += p.level !== "ok"; e.restarts += p.restarts; e.cpu += p.cpu || 0; e.mem += p.mem || 0; nsMap.set(p.namespace, e);
+  });
+  const nsCost = new Map((cost?.namespaces || []).map((r) => [r.namespace, r.monthly]));
+  $("nsTable").innerHTML = `<div class="tablewrap"><table class="mini-table compact"><thead><tr><th>Namespace</th><th class="num">Pods</th><th class="num">Unhealthy</th><th class="num">Restarts</th><th class="num">CPU</th><th class="num">Memory</th>${cost ? '<th class="num">Per month</th>' : ""}</tr></thead><tbody>
+    ${[...nsMap].sort((a, b) => (nsCost.get(b[0]) || b[1].pods) - (nsCost.get(a[0]) || a[1].pods)).map(([ns, e]) => `<tr>
+      <td><a class="linkbtn" href="#pods?ns=${enc(ns)}">${esc(ns)}</a></td><td class="num">${e.pods}</td><td class="num ${e.bad ? "hot" : "muted"}">${e.bad}</td>
+      <td class="num ${e.restarts ? "" : "muted"}">${e.restarts}</td><td class="num">${fmtCpu(e.cpu) || "–"}</td><td class="num">${fmtMem(e.mem) || "–"}</td>
+      ${cost ? `<td class="num">${nsCost.has(ns) ? money(nsCost.get(ns)) : "–"}</td>` : ""}</tr>`).join("")}</tbody></table></div>
+    <div class="card-foot">Restarts are totals since each pod started. Click a namespace to see its pods.</div>`;
+
+  // Resource waste, with the money it would save
   const waste = ins.waste || [];
-  const cpuW = waste.reduce((a, r) => a + r.cpuWaste, 0), memW = waste.reduce((a, r) => a + r.memWaste, 0);
-  $("wasteTotal").textContent = waste.length ? `≈ ${fmtCpu(cpuW)} CPU · ${fmtMem(memW)} reclaimable` : "";
-  $("waste").innerHTML = !data.metricsAvailable ? '<div class="empty">Needs metrics-server.</div>'
-    : waste.length ? `<div class="tablewrap"><table class="mini-table"><thead><tr><th>Workload</th><th class="num">CPU req → used</th><th class="num">Memory req → peak</th><th class="num">Suggest per pod</th></tr></thead><tbody>
-      ${waste.map((r) => `<tr><td><b>${esc(r.owner.split("/")[1] || r.owner)}</b><small>${esc(r.namespace)} · ${plural(r.pods, "pod")}</small></td>
+  const saves = new Map((cost?.savings.wasteRows || []).map((r) => [r.namespace + " " + r.owner, r.monthly]));
+  const totalSave = [...saves.values()].reduce((a, b) => a + b, 0);
+  $("wasteTotal").textContent = waste.length ? (cost ? `≈ ${money(totalSave)} / month to save` : `${plural(waste.length, "workload")}`) : "";
+  $("waste").innerHTML = !data.metricsAvailable ? '<div class="empty">Needs metrics-server to measure real usage.</div>'
+    : waste.length ? `<div class="tablewrap"><table class="mini-table"><thead><tr><th>Workload</th><th class="num">CPU reserved → used</th><th class="num">Memory reserved → peak</th><th class="num">Suggested request</th>${cost ? '<th class="num">Saves / month</th>' : ""}</tr></thead><tbody>
+      ${waste.map((r) => `<tr><td><b>${esc(ownerName(r.owner))}</b><small>${esc(r.namespace)} · ${plural(r.pods, "pod")}</small></td>
         <td class="num">${fmtCpu(r.cpuReq)} → ${fmtCpu(r.cpuUsed)}</td><td class="num">${fmtMem(r.memReq)} → ${fmtMem(r.memPeak)}</td>
-        <td class="num save">${r.cpuWaste ? fmtCpu(r.cpuSuggest) : "–"} · ${r.memWaste ? fmtMem(r.memSuggest) : "–"}</td></tr>`).join("")}</tbody></table></div>
-      <div class="card-foot">Based on usage since KubePulse started. Lower requests gradually and watch for throttling.</div>`
-    : `<div class="empty">${CHECK}<b>Nothing oversized</b>Requests look close to real usage (needs ~5 minutes of data).</div>`;
+        <td class="num save">${r.cpuWaste ? fmtCpu(r.cpuSuggest) + " CPU" : ""}${r.cpuWaste && r.memWaste ? " · " : ""}${r.memWaste ? fmtMem(r.memSuggest) : ""}</td>
+        ${cost ? `<td class="num save">${money(saves.get(r.namespace + " " + r.owner) || 0)}</td>` : ""}</tr>`).join("")}</tbody></table></div>
+      <div class="card-foot">Per pod. Based on CPU averaged and memory at its peak since KubePulse started, with 50% (CPU) and 30% (memory) headroom.</div>`
+    : `<div class="empty">${CHECK}<b>Nothing oversized</b>Requests look close to real usage. This needs about 5 minutes of data after KubePulse starts.</div>`;
 
   // Recent changes: pods created in the last hour, grouped by workload
   const groups = new Map();
@@ -886,18 +1143,17 @@ function renderInsights() {
   $("changes").innerHTML = changes.length ? changes.map((g) => {
     const bad = g.pods.filter((p) => p.level !== "ok"), first = bad[0] || g.pods[0];
     return `<button class="row" ${podAttrs(first.namespace, first.name)}><span class="dot ${bad.length ? "bad-c" : "ok-c"}"></span>
-      <div style="min-width:0"><div class="t">${esc(g.owner.split("/")[1] || g.owner)} <span class="muted" style="font-weight:400">${esc(g.owner.split("/")[0])}</span></div>
-      <div class="m">${esc(g.ns)} · ${plural(g.pods.length, "new pod")}${bad.length ? ` · <span class="hot">${bad.length} unhealthy, may be related</span>` : ""}</div></div>
+      <div style="min-width:0"><div class="t">${esc(ownerName(g.owner))} <span class="muted" style="font-weight:400">${esc(ownerKind(g.owner))}</span></div>
+      <div class="m">${esc(g.ns)} · ${plural(g.pods.length, "new pod")}${bad.length ? ` · <span class="hot">${bad.length} unhealthy, may be related</span>` : " · all healthy"}</div></div>
       <span class="muted" style="font-size:12px">${fmtAge(g.newest)} ago</span></button>`;
-  }).join("") : `<div class="empty">No new pods in the last hour.</div>`;
+  }).join("") : `<div class="empty">No new pods in the last hour, so nothing was rolled out or restarted recently.</div>`;
 
   // Short-lived pods
   const churn = ins.churn || [];
-  $("churn").innerHTML = churn.length ? `<table class="mini-table"><thead><tr><th>Workload</th><th class="num">Replicas</th><th class="num">Pods created 24h</th><th class="num">Typical lifespan</th></tr></thead><tbody>
-    ${churn.map((r) => `<tr><td><b>${esc(r.owner.split("/")[1])}</b><small>${esc(r.namespace)} · ${esc(r.owner.split("/")[0])}</small></td><td class="num">${r.replicas}</td>
-      <td class="num hot">${r.created24h}</td><td class="num">${r.medianLife != null ? fmtAge(r.medianLife) : "–"}</td></tr>`).join("")}</tbody></table>
-    <div class="card-foot">These keep getting recreated even if they look Running now. Often a failing liveness probe, eviction or a crash-looping rollout.</div>`
-    : `<div class="empty">${CHECK}<b>No churn</b>No workload is replacing pods unusually often.</div>`;
+  $("churn").innerHTML = churn.length ? `<table class="mini-table"><thead><tr><th>Workload</th><th class="num">Replicas</th><th class="num">Pods created in 24h</th><th class="num">Typical lifespan</th></tr></thead><tbody>
+    ${churn.map((r) => `<tr><td><b>${esc(ownerName(r.owner))}</b><small>${esc(r.namespace)} · ${esc(ownerKind(r.owner))}</small></td><td class="num">${r.replicas}</td>
+      <td class="num hot">${r.created24h}</td><td class="num">${r.medianLife != null ? fmtAge(r.medianLife) : "–"}</td></tr>`).join("")}</tbody></table>`
+    : `<div class="empty">${CHECK}<b>No churn</b>No workload is replacing its pods unusually often.</div>`;
 
   // Certificates
   const certs = data.certs;
@@ -913,17 +1169,106 @@ function renderInsights() {
 
   // Volumes
   const pvcs = data.pvcs;
-  $("pvcSub").textContent = data.pvcStats ? "disk usage from the kubelet" : "usage needs PVC_STATS=true (see README)";
+  $("pvcSub").textContent = data.pvcStats ? "disk usage from the kubelet" : "size and cost; usage needs PVC_STATS=true";
   $("pvcs").innerHTML = pvcs == null ? '<div class="empty">KubePulse can\'t list PersistentVolumeClaims.</div>'
     : !pvcs.length ? '<div class="empty">No PersistentVolumeClaims.</div>'
-    : `<div class="tablewrap"><table class="mini-table"><thead><tr><th>Volume</th><th>Status</th><th>Used</th><th class="num">Size</th><th>Storage class</th></tr></thead><tbody>
-      ${pvcs.slice(0, 30).map((v) => {
+    : `<div class="tablewrap"><table class="mini-table"><thead><tr><th>Volume</th><th>Status</th><th>Used</th><th class="num">Size</th><th>Storage class</th>${cost ? '<th class="num">Cost / month</th>' : ""}</tr></thead><tbody>
+      ${pvcs.slice(0, 40).map((v) => {
         const l = v.percent == null ? "muted" : v.percent >= 90 ? "bad" : v.percent >= 75 ? "warn" : "ok";
         return `<tr><td><b>${esc(v.name)}</b><small>${esc(v.namespace)}${v.pod ? " · " + esc(v.pod) : ""}</small></td>
           <td><span class="tag ${lvlClass(v.phase === "Bound" ? "ok" : "warn")}">${esc(v.phase)}</span></td>
           <td class="${lvlClass(l)}">${v.percent == null ? '<span class="muted">–</span>' : `<span class="pvcbar"><i style="width:${v.percent}%"></i></span>${v.percent.toFixed(0)}% · ${fmtMem(v.used)}`}</td>
-          <td class="num">${esc(v.size || "–")}</td><td class="muted">${esc(v.storageClass || "–")}</td></tr>`;
+          <td class="num">${esc(v.size || "–")}</td><td class="muted">${esc(v.storageClass || "–")}</td>
+          ${cost ? `<td class="num">${v.monthly != null ? money(v.monthly) : "–"}</td>` : ""}</tr>`;
       }).join("")}</tbody></table></div>`;
+}
+
+// ---------- Cost ----------
+
+const PART_LABEL = { nodes: "Nodes", storage: "Disks", loadBalancers: "Load balancers", controlPlane: "Control plane" };
+const PART_COLOR = { nodes: "var(--brand)", storage: "var(--info)", loadBalancers: "var(--warn)", controlPlane: "var(--ok)" };
+
+function renderCost() {
+  const c = data.cost;
+  if (!c) {
+    ["costHero", "costDays", "costSavings", "nsCost", "nodeCost", "wlCost", "storCost"].forEach((id) => $(id).innerHTML = "");
+    $("costHero").innerHTML = '<div class="empty">Cost estimates appear after the first full read of the cluster.</div>';
+    return;
+  }
+  const sources = [...new Set(c.nodes.map((n) => n.source))];
+  const parts = Object.entries(c.parts).filter(([, v]) => v > 0);
+
+  $("costHero").innerHTML = `<div class="muted" style="font-size:12.5px">Estimated cost · per month</div>
+    <div class="big">${money(c.monthly)}</div>
+    <div class="muted" style="font-size:13.5px">≈ ${money(c.monthly / 30.4)} per day · ${money(c.hourly, 2)} per hour</div>
+    <div class="stack">${parts.map(([k, v]) => `<i style="width:${v / c.monthly * 100}%;background:${PART_COLOR[k]}" title="${PART_LABEL[k]}: ${money(v)}"></i>`).join("")}</div>
+    <div class="parts">${parts.map(([k, v]) => `<div><span class="swatch" style="background:${PART_COLOR[k]}"></span>${PART_LABEL[k]}${k === "loadBalancers" ? ` (${c.loadBalancerCount})` : ""}<b>${money(v)}</b><span class="muted">${Math.round(v / c.monthly * 100)}%</span></div>`).join("")}</div>
+    <div class="card-foot" style="padding:12px 0 0">Prices: ${esc(sources.join(" · "))}. List prices, excluding network traffic, backups, and any reservation or savings-plan discounts.</div>`;
+
+  const days = c.days || [], maxDay = Math.max(1e-9, ...days.map((d) => d.spend));
+  const today = days.at(-1);
+  $("costDays").innerHTML = `<div class="card-h" style="padding:0 0 4px"><h2>Daily spend</h2><span class="grow"></span><span class="muted">while KubePulse runs</span></div>
+    <div class="muted" style="font-size:13px">Today so far</div><div class="mid-big">${today ? money(today.spend) : "–"}</div>
+    <div class="days">${days.map((d) => `<div style="--c:var(--brand)" title="${d.day}: ${money(d.spend, 2)}"><span>${money(d.spend)}</span><i style="height:${Math.max(4, d.spend / maxDay * 100)}%"></i>
+      <span>${new Date(d.day + "T12:00").toLocaleDateString([], { weekday: "short" })}</span></div>`).join("")}</div>
+    ${days.length < 7 ? `<div class="muted" style="font-size:11.5px;margin-top:8px">Adds up the estimated cost every ${data.pollSeconds}s, so the first day is partial. ${days.length} of 7 days so far.</div>` : ""}`;
+
+  // Savings, each explained
+  const s = c.savings, candidates = c.nodes.filter((n) => !n.systemPool);
+  const cheapest = candidates.sort((a, b) => a.hourly - b.hourly)[0];
+  const idleTip = cheapest && s.idle >= cheapest.hourly * 730 && c.nodes.length > 1
+    ? `That's more than one ${esc(cheapest.instanceType)} node (${money(cheapest.hourly * 730)}), so the cluster could probably run with one node fewer.`
+    : "Some headroom is healthy; a cluster autoscaler keeps it from growing.";
+  const items = [
+    ["Right-size requests", s.rightsize, s.rightsize >= 1 ? `${plural(s.wasteRows.length, "workload")} reserve far more than they use. Lower their requests to the suggested values on the Insights page.` : "Requests are close to real usage (needs about 5 minutes of data after KubePulse starts)."],
+    ["Idle capacity", s.idle, `${c.idle.percent.toFixed(0)}% of what you pay for nodes isn't claimed by any pod. ${idleTip}`],
+    ["Spot VMs", s.spot, s.spot >= 1 ? "Estimated saving if the stateless nodes ran as spot VMs. Only for apps that tolerate a node being taken away at short notice."
+      : "Every node runs system pods or pods with persistent volumes, so spot isn't a safe fit as the cluster is. A separate spot node pool for stateless apps could still save money."],
+  ];
+  $("costSavings").innerHTML = `<div class="card-h" style="padding:0 0 8px"><h2>Ways to save</h2></div>${items.map(([t, v, d]) => `<div class="saving">
+      <div class="saving-top"><b>${t}</b><span class="${v >= 1 ? "save" : "muted"}">${v >= 1 ? "≈ " + money(v) + " / mo" : "–"}</span></div><p>${d}</p></div>`).join("")}`;
+
+  // By namespace, plus idle and shared rows so everything adds up to the total
+  const shared = c.parts.loadBalancers + c.parts.controlPlane;
+  const nsRows = c.namespaces.filter((r) => r.monthly >= 0.005);
+  const maxNs = Math.max(1e-9, ...nsRows.map((r) => r.monthly), c.idle.monthly);
+  const row = (name, r, cls = "") => `<tr class="${cls}"><td>${name}</td><td class="num">${r.pods ?? ""}</td><td class="num">${r.cpu != null ? fmtCpu(r.cpu) : ""}</td><td class="num">${r.mem != null ? fmtMem(r.mem) : ""}</td>
+      <td class="num">${r.compute != null ? money(r.compute) : ""}</td><td class="num">${r.storage ? money(r.storage) : r.storage === 0 ? '<span class="muted">–</span>' : ""}</td>
+      <td class="num"><b>${money(r.monthly)}</b></td><td class="sharecol"><span class="sharebar"><i style="width:${r.monthly / maxNs * 100}%"></i></span>${Math.round(r.monthly / c.monthly * 100)}%</td></tr>`;
+  $("nsCostSub").textContent = `${plural(nsRows.length, "namespace")} · ${money(c.monthly)} total`;
+  $("nsCost").innerHTML = `<div class="tablewrap"><table class="mini-table cost-table"><thead><tr><th>Namespace</th><th class="num">Pods</th><th class="num">CPU claimed</th><th class="num">Memory claimed</th><th class="num">Compute</th><th class="num">Disks</th><th class="num">Per month</th><th>Share</th></tr></thead><tbody>
+    ${nsRows.map((r) => row(`<a class="linkbtn" href="#pods?ns=${enc(r.namespace)}">${esc(r.namespace)}</a>`, r)).join("")}
+    ${row('<span class="muted">Idle capacity</span> <small>paid for, not claimed by any pod</small>', { monthly: c.idle.monthly, compute: c.idle.monthly }, "idle-row")}
+    ${shared > 0 ? row('<span class="muted">Shared</span> <small>control plane and load balancers</small>', { monthly: shared }, "idle-row") : ""}
+    </tbody></table></div>
+    <div class="card-foot">"Claimed" is each pod's request or its real usage, whichever is higher. Pods without requests only claim what they use.</div>`;
+
+  $("nodeCost").innerHTML = `<div class="tablewrap"><table class="mini-table"><thead><tr><th>Node</th><th class="num">Per month</th><th class="num">Claimed</th><th class="num">As spot</th></tr></thead><tbody>
+    ${c.nodes.map((n) => `<tr><td><b title="${esc(n.name)}">${esc(shortNode(n.name))}</b><small>${esc(n.instanceType)}${n.zone ? " · " + esc(n.zone) : ""} · ${n.spot ? "spot" : "on-demand"}
+        ${n.systemPool ? '<span class="pilltag">system pool</span>' : ""}${n.stateful ? '<span class="pilltag">has volumes</span>' : ""}</small><small class="muted">${esc(n.source)} · ${money(n.hourly, 3)}/h</small></td>
+      <td class="num"><b>${money(n.hourly * 730)}</b></td>
+      <td class="num"><span class="sharebar"><i style="width:${Math.min(100, n.allocatedPct)}%"></i></span>${Math.round(n.allocatedPct)}%</td>
+      <td class="num muted">${n.spot ? "already spot" : n.spotHourly ? money(n.spotHourly * 730) : "–"}</td></tr>`).join("")}</tbody></table></div>`;
+
+  $("wlCost").innerHTML = `<div class="tablewrap"><table class="mini-table"><thead><tr><th>Workload</th><th class="num">Pods</th><th class="num">Per pod</th><th class="num">Per month</th></tr></thead><tbody>
+    ${c.workloads.map((w) => `<tr><td><b>${esc(ownerName(w.owner))}</b><small>${esc(w.namespace)} · ${esc(ownerKind(w.owner))} · ${fmtCpu(w.cpu)} CPU, ${fmtMem(w.mem)}</small></td>
+      <td class="num">${w.pods}</td><td class="num">${money(w.monthly / w.pods)}</td><td class="num"><b>${money(w.monthly)}</b></td></tr>`).join("")}</tbody></table></div>`;
+
+  const disks = (data.pvcs || []).filter((v) => v.monthly != null).sort((a, b) => b.monthly - a.monthly);
+  $("storSub").textContent = disks.length ? `${plural(disks.length, "disk")} · ${money(c.parts.storage)} per month` : "";
+  $("storCost").innerHTML = disks.length ? `<div class="tablewrap"><table class="mini-table"><thead><tr><th>Volume</th><th class="num">Size</th><th>Priced as</th><th class="num">Per month</th></tr></thead><tbody>
+    ${disks.slice(0, 25).map((v) => `<tr><td><b>${esc(v.name)}</b><small>${esc(v.namespace)}${v.pod ? " · " + esc(v.pod) : ""}</small></td><td class="num">${esc(v.size || "–")}</td>
+      <td class="muted">${esc(v.priceSource || "")}</td><td class="num"><b>${money(v.monthly)}</b></td></tr>`).join("")}</tbody></table></div>`
+    : '<div class="empty">No persistent volumes.</div>';
+
+  $("costHow").innerHTML = `<ul>
+    <li><b>Node prices</b>: ${c.provider === "azure" ? "Azure's public price list for your region, refreshed daily. " : ""}Otherwise built-in list prices, or an estimate from the node's CPU and memory. Set <code>NODE_PRICES</code> to use your own rates, e.g. <code>{"Standard_D8s_v6": 0.40}</code> after discounts.</li>
+    <li><b>Sharing a node's price</b>: split into a CPU part and a memory part, then shared among its pods by what they claim: request or usage, whichever is higher. What's left over is idle.</li>
+    <li><b>Disks</b>: priced from each PVC's size and StorageClass${c.provider === "azure" ? " (Azure managed-disk tiers)" : ""}.</li>
+    <li><b>Load balancers</b>: base price only (${c.loadBalancerCount} LoadBalancer services); traffic is billed on top.</li>
+    <li><b>Control plane</b>: ${c.controlPlaneAuto ? (c.provider === "azure" ? "AKS Free tier assumed ($0). Set CONTROL_PLANE_HOURLY=0.10 for the Standard tier." : "EKS and GKE charge $0.10 per hour.") : "set by CONTROL_PLANE_HOURLY."}</li>
+    <li><b>Currency</b>: shown in ${esc(c.currency)}${c.rate !== 1 ? ` at ${c.rate} per USD` : ""}. Change it with <code>COST_CURRENCY</code> and <code>COST_RATE</code>.</li>
+    <li>Not included: network traffic, backups, public IPs beyond load balancers, monitoring and other cloud services outside the cluster.</li></ul>`;
 }
 
 function renderEvents() {
@@ -1057,7 +1402,7 @@ function render() {
   if (!data) return;
   const s = summary();
   renderShell(s);
-  ({ overview: () => renderOverview(s), pods: renderPods, nodes: renderNodes, insights: renderInsights, events: renderEvents })[view]();
+  ({ overview: () => renderOverview(s), pods: renderPods, nodes: renderNodes, insights: renderInsights, cost: renderCost, events: renderEvents })[view]();
   if (wall) renderWall(s);
 }
 
@@ -1416,7 +1761,7 @@ document.addEventListener("keydown", (e) => {
   else if (drawer || wall) return;
   else if (k === "/") { e.preventDefault(); setView("pods"); $("q").focus(); }
   else if (k === "p") { if (view !== "pods") setView("pods"); toggleOnlyBad(); }
-  else if (k >= "1" && k <= "5") setView(Object.keys(VIEWS)[+k - 1]);
+  else if (k >= "1" && k <= "6") setView(Object.keys(VIEWS)[+k - 1]);
 });
 $("kbdHelp").addEventListener("click", () => $("kbdHelp").hidden = true);
 $("q").addEventListener("input", () => { syncUrl(); data && renderPods(); });
