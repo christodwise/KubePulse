@@ -90,7 +90,7 @@ spec:
         seccompProfile: { type: RuntimeDefault }
       containers:
         - name: kubepulse
-          image: christoj/kubepulse:0.7.2
+          image: christoj/kubepulse:0.8.0
           ports: [{ containerPort: 8080 }]
           envFrom:
             - secretRef: { name: kubepulse-secrets, optional: true }

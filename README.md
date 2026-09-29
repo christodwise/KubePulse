@@ -22,7 +22,6 @@ Kubernetes. The screenshots use demo data.
 **See the cluster at a glance**
 - Health score, cluster CPU / memory / pod trends, and a list of what needs attention right now
 - **Kubi**, a little robot IT engineer with glowing yellow eyes and a headset, has an expression for every moment: grinning when the cluster is healthy, sweating when it's degraded, panicking when it's critical, asleep when data is stale, celebrating when all is clear, and thinking or typing away while he diagnoses a pod
-- On the home page Kubi **walks around**: he stops to look around, waves, tells you how the cluster is doing, and runs around in a panic when something is critical. Click him to jump straight to the problems
 - A **cluster map**: every node as a card, every pod as a dot, coloured by status; failing pods breathe red
 - Pods, Nodes and Events pages with search and filters. The URL keeps your filters, so `/#pods?ns=prod&problems=1` is a link you can share
 
@@ -42,7 +41,7 @@ Kubernetes. The screenshots use demo data.
 - Optional **sound**: a monitor beep when a pod starts failing, a flatline when a node goes down, a chime when everything recovers. Browsers only allow audio after a click, so after a reload the wallboard shows *Tap to enable sound*
 
 **Signed in, except the TV**
-- A sign-in page protects everything: pods, logs, events and diagnosis. It's a small show of its own: a drifting network and a live heartbeat behind a glass card, and Kubi, who greets you, covers his eyes while you type your password, looks sad when it's wrong and celebrates when you're in.
+- A sign-in page protects everything: pods, logs, events and diagnosis. It opens on Kubi's night-shift operations room: live graphs and logs on his monitors, a blinking server rack, the city at night outside the window. Kubi greets you, covers his eyes while you type your password, looks sad when it's wrong and celebrates when you're in.
 
 **Keyboard**: `/` search · `p` problems only · `t` theme · `f` wallboard · `s` sound · `1`–`5` pages · `?` help
 

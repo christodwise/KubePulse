@@ -412,74 +412,85 @@
   .ai-meta { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; flex-wrap: wrap; }
   .ai-meta .grow { flex: 1; }
 
-  /* ---------- Sign in: bright and playful, Kubi talks to you ---------- */
-  .login { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 24px; overflow: hidden;
-           background: radial-gradient(900px 600px at 15% 20%, #d7f5f1, transparent 65%), radial-gradient(800px 600px at 90% 10%, #e3ecff, transparent 60%),
-                       radial-gradient(900px 700px at 70% 100%, #fff0e4, transparent 60%), #f7f8fb; }
-  :root[data-theme="dark"] .login { background: radial-gradient(900px 600px at 15% 20%, #0f3a36, transparent 65%), radial-gradient(800px 600px at 90% 10%, #172444, transparent 60%), #07080c; }
-  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .login { background: radial-gradient(900px 600px at 15% 20%, #0f3a36, transparent 65%), radial-gradient(800px 600px at 90% 10%, #172444, transparent 60%), #07080c; } }
-  /* Little pills and crosses drifting up in the background */
-  .login-bg { position: absolute; inset: 0; pointer-events: none; }
-  .login-bg i { position: absolute; bottom: -40px; opacity: 0; animation: floatUp linear infinite; }
-  .login-bg i.p { width: 26px; height: 26px; border-radius: 7px; background: #ffd60a; box-shadow: 0 6px 14px rgba(255, 214, 10, .35); }
-  .login-bg i.p::after { content: "</>"; position: absolute; inset: 0; display: grid; place-items: center; font: 700 10px var(--mono); color: #7a5c00; }
-  .login-bg i.x { width: 22px; height: 22px; border-radius: 50%; border: 3px solid #5ac8fa; }
-  .login-bg i.d { width: 12px; height: 12px; border-radius: 50%; background: #7fb4ff; }
-  @keyframes floatUp { 10% { opacity: .7; } 90% { opacity: .7; } to { transform: translateY(-110vh) rotate(var(--r, 180deg)); opacity: 0; } }
-  .login-wrap { position: relative; z-index: 1; display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 40px; align-items: center; width: min(960px, 100%); }
-  .login-hero { position: relative; display: flex; flex-direction: column; align-items: center; animation: rise .9s var(--spring) both; }
-  .bubble { position: relative; max-width: 360px; padding: 14px 20px; margin-bottom: 18px; border-radius: 22px; font-size: 17px; font-weight: 600; letter-spacing: -.015em;
-            background: var(--surface); color: var(--ink); box-shadow: 0 18px 40px -18px rgba(0, 0, 0, .25); text-align: center; }
-  .bubble::after { content: ""; position: absolute; left: 50%; bottom: -9px; width: 18px; height: 18px; background: inherit; transform: translateX(-50%) rotate(45deg); border-radius: 3px; }
+  /* ---------- Sign in: Kubi's night-shift operations room ---------- */
+  .login { position: fixed; inset: 0; z-index: 60; overflow: hidden; color: #f5f5f7;
+           background: radial-gradient(1100px 700px at 30% 30%, #1b2a4a, transparent 70%), linear-gradient(#0d1424, #0a0f1c 70%, #121826 70%, #0b0f18); }
+  .room { position: absolute; left: 0; bottom: 0; width: min(66vw, 1100px); aspect-ratio: 900 / 620; max-height: 100vh; }
+  .room > svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .room .kubi { position: absolute; left: 27%; bottom: 2%; width: 26%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; }
+  .room .kubi .mascot { width: 100%; height: auto; }
+  .bubble { position: relative; margin-bottom: 10px; padding: 12px 18px; border-radius: 20px; font-size: 16px; font-weight: 600; white-space: nowrap; text-align: center;
+            color: #1d1d1f; background: #fff; box-shadow: 0 20px 40px -16px rgba(0, 0, 0, .6); letter-spacing: -.01em; }
+  .bubble::after { content: ""; position: absolute; left: 50%; bottom: -8px; width: 16px; height: 16px; background: inherit; transform: translateX(-50%) rotate(45deg); border-radius: 3px; }
   .bubble.pop { animation: pop2 .45s var(--spring); }
-  @keyframes pop2 { from { transform: scale(.85); opacity: .3; } }
-  .login-doc { position: relative; }
+  @keyframes pop2 { from { transform: scale(.8); opacity: .3; } }
   .login-doc.jump { animation: jump .8s var(--spring); }
-  @keyframes jump { 35% { transform: translateY(-40px); } 60% { transform: translateY(6px); } }
-  .floor { width: 260px; height: 26px; margin-top: -18px; border-radius: 50%; background: radial-gradient(closest-side, rgba(22, 179, 168, .22), transparent); }
-  .login-card { position: relative; padding: 34px 32px 28px; border-radius: 30px; background: var(--glass-strong); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur);
-                border: 1px solid var(--glass-edge); box-shadow: 0 40px 90px -30px rgba(0, 0, 0, .3); animation: cardIn .9s var(--spring) .1s both; }
-  @keyframes cardIn { from { opacity: 0; transform: translateY(24px) scale(.97); } }
+  @keyframes jump { 35% { transform: translateX(-50%) translateY(-40px); } 60% { transform: translateX(-50%) translateY(6px); } }
+  /* Room details */
+  .room .led { animation: blinkLed 1.8s steps(2, jump-none) infinite; }
+  @keyframes blinkLed { 50% { opacity: .15; } }
+  .room .graph { stroke-dasharray: 420; animation: draw 5s linear infinite; }
+  @keyframes draw { from { stroke-dashoffset: 420; } to { stroke-dashoffset: 0; } }
+  .room .bars rect { transform-box: fill-box; transform-origin: bottom; animation: bars 2.4s ease-in-out infinite alternate; }
+  @keyframes bars { from { transform: scaleY(.35); } }
+  .room .log { animation: scrollLog 6s linear infinite; }
+  @keyframes scrollLog { to { transform: translateY(-48px); } }
+  .room .star { animation: twinkle 3s ease-in-out infinite; }
+  @keyframes twinkle { 50% { opacity: .2; } }
+  .room .steam { stroke-dasharray: 4 6; animation: steam 2.6s linear infinite; opacity: .6; }
+  @keyframes steam { to { stroke-dashoffset: -20; } }
+  .room .hand { transform-box: view-box; transform-origin: 140px 92px; animation: tick 60s steps(60) infinite; }
+  @keyframes tick { to { transform: rotate(360deg); } }
+  .room .screenglow { animation: glowPulse 4s ease-in-out infinite; }
+  @keyframes glowPulse { 50% { opacity: .55; } }
+  /* The sign-in card */
+  .login-panel { position: absolute; right: max(5vw, 24px); top: 50%; transform: translateY(-50%); width: min(400px, calc(100vw - 48px)); }
+  .login-card { padding: 34px 32px 28px; border-radius: 28px; color: #f5f5f7;
+                background: rgba(22, 26, 38, .55); -webkit-backdrop-filter: saturate(160%) blur(26px); backdrop-filter: saturate(160%) blur(26px);
+                border: 1px solid rgba(255, 255, 255, .1); box-shadow: 0 40px 100px -30px rgba(0, 0, 0, .8); animation: cardIn .9s var(--spring) .15s both; }
+  @keyframes cardIn { from { opacity: 0; transform: translateX(30px) scale(.97); } }
   .login-card > * { animation: rise .7s var(--spring) both; }
-  .login-card > :nth-child(2) { animation-delay: .1s; } .login-card > :nth-child(3) { animation-delay: .16s; } .login-card > :nth-child(4) { animation-delay: .22s; }
-  .login-card > :nth-child(5) { animation-delay: .28s; } .login-card > :nth-child(n+6) { animation-delay: .34s; }
-  .login-brand { display: flex; align-items: center; gap: 10px; margin-bottom: 22px; }
+  .login-card > :nth-child(2) { animation-delay: .25s; } .login-card > :nth-child(3) { animation-delay: .3s; } .login-card > :nth-child(4) { animation-delay: .36s; }
+  .login-card > :nth-child(5) { animation-delay: .42s; } .login-card > :nth-child(n+6) { animation-delay: .48s; }
+  .login-brand { display: flex; align-items: center; gap: 10px; margin-bottom: 26px; }
   .login-brand .logo { height: 30px; }
   .login-brand b { display: block; font-size: 17px; font-weight: 700; letter-spacing: -.02em; }
-  .login-brand small { color: var(--muted); font-size: 12px; }
-  .login-card h1 { margin: 0 0 4px; font-size: 30px; font-weight: 700; letter-spacing: -.035em; }
-  .login-card .tagline { margin: 0 0 22px; color: var(--muted); font-size: 14px; }
+  .login-brand small { color: #98989d; font-size: 12px; }
+  .login-card h1 { margin: 0 0 4px; font-size: 32px; font-weight: 700; letter-spacing: -.035em; }
+  .login-card .tagline { margin: 0 0 24px; color: #98989d; font-size: 14px; }
+  .login-card .tagline b { color: #ffd60a; font-weight: 600; }
   .field { position: relative; margin-bottom: 12px; }
-  .field input { width: 100%; height: 54px; padding: 18px 16px 0 46px; border-radius: 14px; border: 1.5px solid transparent; background: var(--fill); font-size: 15px;
-                 transition: border-color .25s, box-shadow .25s, background .25s; }
-  .field input:focus { outline: none; background: var(--surface); border-color: var(--brand); box-shadow: 0 0 0 5px color-mix(in srgb, var(--brand) 18%, transparent); }
-  .field label { position: absolute; left: 46px; top: 17px; font-size: 15px; color: var(--muted); pointer-events: none; transition: all .25s var(--spring); margin: 0; }
-  .field input:focus + label, .field input:not(:placeholder-shown) + label { top: 8px; font-size: 11px; color: var(--brand); font-weight: 600; }
-  .field svg { position: absolute; left: 16px; top: 18px; width: 18px; height: 18px; color: var(--muted); transition: color .25s; }
-  .field input:focus ~ svg { color: var(--brand); }
-  .login-err { min-height: 20px; color: var(--bad); font-size: 13px; margin: 0 0 8px; }
-  .login-card .go { position: relative; overflow: hidden; width: 100%; height: 54px; border: 0; border-radius: 14px; color: #fff; font-size: 16px; font-weight: 600;
-                    background: linear-gradient(135deg, #14b8a6, #0a84ff); box-shadow: 0 14px 30px -12px rgba(10, 132, 255, .7); transition: transform .25s var(--spring), box-shadow .25s; }
-  .login-card .go::after { content: ""; position: absolute; inset: 0; background: linear-gradient(110deg, transparent 30%, rgba(255, 255, 255, .4) 50%, transparent 70%);
+  .field input { width: 100%; height: 54px; padding: 18px 16px 0 46px; border-radius: 14px; border: 1px solid rgba(255, 255, 255, .1); color: #f5f5f7; font-size: 15px;
+                 background: rgba(255, 255, 255, .06); transition: border-color .25s, box-shadow .25s, background .25s; }
+  .field input:focus { outline: none; border-color: #ffd60a; background: rgba(255, 255, 255, .09); box-shadow: 0 0 0 4px rgba(255, 214, 10, .18); }
+  .field label { position: absolute; left: 46px; top: 17px; font-size: 15px; color: #8e8e93; pointer-events: none; transition: all .25s var(--spring); margin: 0; }
+  .field input:focus + label, .field input:not(:placeholder-shown) + label { top: 8px; font-size: 11px; color: #ffd60a; font-weight: 600; }
+  .field svg { position: absolute; left: 16px; top: 18px; width: 18px; height: 18px; color: #8e8e93; transition: color .25s; }
+  .field input:focus ~ svg { color: #ffd60a; }
+  .login-err { min-height: 20px; color: #ff6961; font-size: 13px; margin: 0 0 8px; }
+  .login-card .go { position: relative; overflow: hidden; width: 100%; height: 54px; border: 0; border-radius: 14px; color: #1d1d1f; font-size: 16px; font-weight: 700;
+                    background: linear-gradient(135deg, #ffe45c, #ffc400); box-shadow: 0 14px 30px -12px rgba(255, 196, 0, .6); transition: transform .25s var(--spring); }
+  .login-card .go::after { content: ""; position: absolute; inset: 0; background: linear-gradient(110deg, transparent 30%, rgba(255, 255, 255, .55) 50%, transparent 70%);
                            transform: translateX(-120%); animation: shimmer 3.4s ease-in-out 1.5s infinite; }
   .login-card .go:hover { transform: translateY(-1px); } .login-card .go:active { transform: scale(.97); }
   .login-card .go.busy { color: transparent; }
   .login-card .go.busy::before { content: ""; position: absolute; left: 50%; top: 50%; width: 20px; height: 20px; margin: -10px 0 0 -10px; border-radius: 50%;
-                                 border: 2.5px solid rgba(255, 255, 255, .35); border-top-color: #fff; animation: spin .7s linear infinite; }
+                                 border: 2.5px solid rgba(0, 0, 0, .2); border-top-color: #1d1d1f; animation: spin .7s linear infinite; }
   @keyframes shimmer { 60%, 100% { transform: translateX(120%); } }
   .login-card.shake { animation: shake .5s cubic-bezier(.36, .07, .19, .97); }
   @keyframes shake { 20%, 60% { transform: translateX(-10px); } 40%, 80% { transform: translateX(10px); } }
-  .login-foot { margin-top: 18px; font-size: 13px; color: var(--muted); text-align: center; }
-  .login.out .login-card, .login.out .login-hero { animation: cardOut .6s var(--spring) .35s forwards; }
-  .login.out { animation: fadeOut .7s ease .6s forwards; }
-  @keyframes cardOut { to { opacity: 0; transform: translateY(-16px) scale(.96); } }
+  .login-foot { margin-top: 18px; font-size: 13px; color: #8e8e93; text-align: center; }
+  .login-foot a { color: #ffd60a; }
+  .login.out .login-panel { animation: panelOut .6s var(--spring) .35s forwards; }
+  .login.out { animation: fadeOut .7s ease .7s forwards; }
+  @keyframes panelOut { to { opacity: 0; transform: translateY(-50%) translateX(30px); } }
   @keyframes fadeOut { to { opacity: 0; } }
   body.app-in .app { animation: appIn .9s var(--spring) both; }
   @keyframes appIn { from { opacity: 0; transform: scale(.985); filter: blur(6px); } }
-  @media (max-width: 860px) {
-    .login-wrap { grid-template-columns: 1fr; gap: 12px; justify-items: center; }
-    .login-hero .mascot { width: 150px; height: 178px; } .bubble { font-size: 15px; margin-bottom: 10px; }
-    .login-card { width: min(420px, 100%); }
+  @media (max-width: 900px) {
+    .room { width: 100vw; opacity: .35; } .room .kubi { display: none; }
+    .login-panel { left: 50%; right: auto; transform: translate(-50%, -50%); }
+    .login.out .login-panel { animation: fadeOut .5s ease .3s forwards; }
   }
 
   /* ---------- Kubi, the mascot ---------- */
@@ -537,31 +548,6 @@
   section.enter > *:nth-child(4), section.enter .hero > *:nth-child(4), section.enter .ins-grid > *:nth-child(4), section.enter .ncards > *:nth-child(4) { animation-delay: .15s; }
   section.enter > *:nth-child(n+5), section.enter .hero > *:nth-child(n+5), section.enter .ins-grid > *:nth-child(n+5), section.enter .ncards > *:nth-child(n+5) { animation-delay: .2s; }
   .card:hover { box-shadow: var(--shadow-lift); }
-
-  /* Kubi walking around the home page */
-  .roamer { position: fixed; bottom: 10px; left: 0; z-index: 20; width: 104px; cursor: pointer; will-change: transform;
-            transition-property: transform; transition-timing-function: linear; }
-  .roamer[hidden] { display: none; }
-  .roam-body { transition: transform .25s var(--spring); }
-  .roam-body.left { transform: scaleX(-1); }
-  .roamer.walking .mascot .body { animation: walk .42s ease-in-out infinite; }
-  .roamer.walking .mascot .shadow { animation: walkShadow .42s ease-in-out infinite; }
-  .roamer.running .mascot .body { animation: walk .22s ease-in-out infinite; }
-  .roamer.jump .roam-body { animation: roamJump .6s var(--spring); }
-  @keyframes walk { 0%, 100% { transform: translateY(0) rotate(-3deg); } 50% { transform: translateY(-6px) rotate(3deg); } }
-  @keyframes walkShadow { 50% { transform: scaleX(.8); opacity: .5; } }
-  @keyframes roamJump { 40% { transform: translateY(-30px); } }
-  .roam-bubble { position: absolute; bottom: calc(100% - 4px); left: 50%; transform: translateX(-50%) scale(.6); opacity: 0; pointer-events: none;
-                 white-space: nowrap; padding: 9px 14px; border-radius: 16px; font-size: 13px; font-weight: 600; color: var(--ink);
-                 background: var(--glass-strong); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); border: 1px solid var(--glass-edge);
-                 box-shadow: 0 14px 30px -12px rgba(0, 0, 0, .3); transition: opacity .25s, transform .35s var(--spring); }
-  .roam-bubble.show { opacity: 1; transform: translateX(-50%) scale(1); }
-  .roam-bubble::after { content: ""; position: absolute; left: 50%; bottom: -6px; width: 12px; height: 12px; background: inherit; border-right: 1px solid var(--glass-edge);
-                        border-bottom: 1px solid var(--glass-edge); transform: translateX(-50%) rotate(45deg); border-radius: 2px; }
-  .roam-bubble.bad { color: var(--bad); }
-  body.drawer-open .roamer, body.signed-out .roamer { display: none; }
-  body.roaming .main { padding-bottom: 170px; }
-  @media (max-width: 820px) { .roamer { width: 80px; } }
 
   /* Keyboard help */
   .kbd-help { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; background: rgba(0, 0, 0, .2); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
@@ -697,17 +683,94 @@
 <div class="backdrop" aria-hidden="true"><i></i><i></i><i></i></div>
 
 <div class="login" id="login" hidden>
-  <div class="login-bg" id="loginBg" aria-hidden="true"></div>
-  <div class="login-wrap">
-    <section class="login-hero">
-      <div class="bubble" id="loginBubble">Hi! I'm Kubi, your on-call buddy 👋</div>
-      <div class="login-doc" id="loginDoc"><div id="loginMascot"></div></div>
-      <div class="floor"></div>
-    </section>
+  <div class="room" aria-hidden="true">
+    <svg viewBox="0 0 900 620" preserveAspectRatio="xMidYMax meet">
+      <defs>
+        <linearGradient id="rmSky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0b1a3a"/><stop offset="1" stop-color="#2a3f73"/></linearGradient>
+        <linearGradient id="rmDesk" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5b4636"/><stop offset="1" stop-color="#3b2c22"/></linearGradient>
+        <linearGradient id="rmRack" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#1c1f27"/><stop offset=".5" stop-color="#2c3140"/><stop offset="1" stop-color="#1a1d24"/></linearGradient>
+        <radialGradient id="rmGlow" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#4aa3ff" stop-opacity=".4"/><stop offset="1" stop-color="#4aa3ff" stop-opacity="0"/></radialGradient>
+        <radialGradient id="rmLamp" cx=".5" cy="0" r="1"><stop offset="0" stop-color="#ffe7a3" stop-opacity=".1"/><stop offset="1" stop-color="#ffe7a3" stop-opacity="0"/></radialGradient>
+        <clipPath id="rmM1"><rect x="292" y="238" width="216" height="128" rx="6"/></clipPath>
+        <clipPath id="rmM2"><rect x="532" y="262" width="180" height="108" rx="6"/></clipPath>
+      </defs>
+      <!-- window with the city at night -->
+      <rect x="560" y="46" width="260" height="170" rx="10" fill="#1a2233"/>
+      <rect x="570" y="56" width="240" height="150" rx="6" fill="url(#rmSky)"/>
+      <circle class="star" cx="600" cy="80" r="1.6" fill="#fff"/><circle class="star" cx="660" cy="70" r="1.2" fill="#fff" style="animation-delay:1s"/>
+      <circle class="star" cx="740" cy="100" r="1.5" fill="#fff" style="animation-delay:2s"/><circle class="star" cx="630" cy="104" r="1.1" fill="#fff" style="animation-delay:.5s"/>
+      <circle cx="780" cy="86" r="13" fill="#f5f0d8" opacity=".9"/><circle cx="774" cy="82" r="12" fill="#1d2f5a"/>
+      <g fill="#0d1526">
+        <rect x="570" y="150" width="34" height="56"/><rect x="606" y="130" width="28" height="76"/><rect x="636" y="160" width="40" height="46"/>
+        <rect x="678" y="120" width="30" height="86"/><rect x="710" y="146" width="44" height="60"/><rect x="756" y="136" width="54" height="70"/>
+      </g>
+      <g fill="#ffd60a" opacity=".75">
+        <rect class="star" x="612" y="140" width="4" height="4"/><rect x="620" y="156" width="4" height="4"/><rect class="star" x="686" y="132" width="4" height="4" style="animation-delay:1.4s"/>
+        <rect x="694" y="150" width="4" height="4"/><rect x="720" y="160" width="4" height="4"/><rect class="star" x="768" y="150" width="4" height="4" style="animation-delay:2.2s"/>
+        <rect x="784" y="170" width="4" height="4"/><rect x="580" y="170" width="4" height="4"/><rect x="648" y="176" width="4" height="4"/>
+      </g>
+      <path d="M690 56 v150 M570 131 h240" stroke="#1a2233" stroke-width="5"/>
+      <!-- wall clock -->
+      <circle cx="140" cy="92" r="34" fill="#1f2533" stroke="#3a4256" stroke-width="4"/><circle cx="140" cy="92" r="27" fill="#e9ecf2"/>
+      <path d="M140 92 L140 74 M140 92 L152 98" stroke="#1d1d1f" stroke-width="3" stroke-linecap="round"/>
+      <line class="hand" x1="140" y1="92" x2="140" y2="70" stroke="#ff453a" stroke-width="1.6" stroke-linecap="round"/><circle cx="140" cy="92" r="2.5" fill="#1d1d1f"/>
+      <!-- server rack -->
+      <rect x="40" y="206" width="120" height="318" rx="8" fill="url(#rmRack)" stroke="#3a4256" stroke-width="2"/>
+      <g fill="#161920">
+        <rect x="52" y="220" width="96" height="30" rx="3"/><rect x="52" y="256" width="96" height="30" rx="3"/><rect x="52" y="292" width="96" height="30" rx="3"/>
+        <rect x="52" y="328" width="96" height="30" rx="3"/><rect x="52" y="364" width="96" height="30" rx="3"/><rect x="52" y="400" width="96" height="30" rx="3"/>
+        <rect x="52" y="436" width="96" height="30" rx="3"/><rect x="52" y="472" width="96" height="30" rx="3"/>
+      </g>
+      <g id="rmLeds"></g>
+      <!-- light from the screens and the lamp -->
+      <ellipse cx="560" cy="440" rx="330" ry="150" fill="url(#rmLamp)"/>
+      <ellipse cx="480" cy="300" rx="260" ry="150" fill="url(#rmGlow)" class="screenglow"/>
+      <!-- monitor 1: live graph -->
+      <rect x="284" y="230" width="232" height="144" rx="10" fill="#15181f"/>
+      <rect x="292" y="238" width="216" height="128" rx="6" fill="#0a1628"/>
+      <g clip-path="url(#rmM1)">
+        <path d="M292 330 h216 M292 300 h216 M292 270 h216" stroke="#1d3150" stroke-width="1"/>
+        <polyline class="graph" points="292,330 318,320 340,326 362,300 384,308 404,284 426,292 448,268 470,280 492,256 508,262" fill="none" stroke="#30d158" stroke-width="2.5" stroke-linejoin="round"/>
+        <polyline class="graph" points="292,350 316,346 342,352 366,336 390,342 414,328 438,338 462,322 486,330 508,318" fill="none" stroke="#ffd60a" stroke-width="2" stroke-linejoin="round" style="animation-delay:-2s"/>
+        <text x="302" y="256" font-family="SF Mono, Menlo, monospace" font-size="11" fill="#64d2ff">cluster · healthy</text>
+      </g>
+      <rect x="386" y="374" width="28" height="44" fill="#232733"/><rect x="354" y="416" width="92" height="10" rx="4" fill="#2c3140"/>
+      <!-- monitor 2: bars and a scrolling log -->
+      <rect x="524" y="254" width="196" height="124" rx="10" fill="#15181f"/>
+      <rect x="532" y="262" width="180" height="108" rx="6" fill="#0a1628"/>
+      <g clip-path="url(#rmM2)">
+        <g class="bars" fill="#0a84ff">
+          <rect x="544" y="300" width="12" height="40" rx="2"/><rect x="562" y="290" width="12" height="50" rx="2" style="animation-delay:-.4s"/>
+          <rect x="580" y="310" width="12" height="30" rx="2" style="animation-delay:-.8s"/><rect x="598" y="296" width="12" height="44" rx="2" style="animation-delay:-1.2s"/>
+        </g>
+        <g class="log" font-family="SF Mono, Menlo, monospace" font-size="8.5" fill="#8ab4f8">
+          <text x="624" y="286">GET /healthz 200</text><text x="624" y="298" fill="#30d158">pod ready ✓</text><text x="624" y="310">scale 3→4</text>
+          <text x="624" y="322">GET /api 200</text><text x="624" y="334" fill="#ffd60a">warn: slow</text><text x="624" y="346">GET /healthz 200</text>
+          <text x="624" y="358" fill="#30d158">pod ready ✓</text><text x="624" y="370">GET /api 200</text><text x="624" y="382">scale 4→3</text>
+          <text x="624" y="394">GET /healthz 200</text><text x="624" y="406" fill="#30d158">all good ✓</text>
+        </g>
+      </g>
+      <rect x="610" y="378" width="24" height="40" fill="#232733"/><rect x="584" y="416" width="76" height="10" rx="4" fill="#2c3140"/>
+      <!-- desk -->
+      <rect x="170" y="426" width="660" height="20" rx="6" fill="url(#rmDesk)"/>
+      <rect x="170" y="442" width="660" height="6" fill="#2a2019"/>
+      <rect x="196" y="446" width="16" height="130" fill="#2a2019"/><rect x="788" y="446" width="16" height="130" fill="#2a2019"/>
+      <!-- coffee -->
+      <path class="steam" d="M752 390 q-6 -10 0 -20 q6 -10 0 -20" stroke="#cfd6e4" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+      <path class="steam" d="M766 392 q-6 -10 0 -20 q6 -10 0 -20" stroke="#cfd6e4" stroke-width="2.5" fill="none" stroke-linecap="round" style="animation-delay:-1.3s"/>
+      <rect x="742" y="394" width="34" height="32" rx="6" fill="#ffd60a"/><path d="M776 402 q12 0 12 9 q0 9 -12 9" stroke="#ffd60a" stroke-width="5" fill="none"/>
+      <text x="759" y="415" text-anchor="middle" font-family="SF Mono, Menlo, monospace" font-size="9" font-weight="700" fill="#5a4500">&lt;/&gt;</text>
+      <!-- plant -->
+      <rect x="226" y="390" width="30" height="36" rx="5" fill="#8e8e93"/>
+      <path d="M241 392 q-22 -30 -8 -54 M241 392 q4 -34 22 -48 M241 392 q-4 -26 -24 -30" stroke="#30d158" stroke-width="7" fill="none" stroke-linecap="round"/>
+    </svg>
+    <div class="kubi login-doc" id="loginDoc"><div class="bubble" id="loginBubble">Hi! I'm Kubi 👋</div><div id="loginMascot"></div></div>
+  </div>
+  <div class="login-panel">
     <form class="login-card" id="loginForm">
       <div class="login-brand"><span class="logo" role="img" aria-label="Lifetrenz"></span><div><b>KubePulse</b><small>by Lifetrenz DevOps</small></div></div>
       <h1>Sign in</h1>
-      <p class="tagline">Know before it breaks.</p>
+      <p class="tagline">Kubi's been watching your cluster. <b>Know before it breaks.</b></p>
       <div class="field"><input id="lu" name="username" autocomplete="username" autocapitalize="off" spellcheck="false" placeholder=" " required><label for="lu">Username</label>
         <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="10" cy="7" r="3.5"/><path d="M3.5 17c1.2-3.2 3.7-4.8 6.5-4.8s5.3 1.6 6.5 4.8"/></svg></div>
       <div class="field"><input id="lp" name="password" type="password" autocomplete="current-password" placeholder=" " required><label for="lp">Password</label>
@@ -880,8 +943,6 @@
   </div>
   <div class="wb-foot" id="wbFoot"></div>
 </div></div>
-
-<div class="roamer" id="roamer" hidden title="Kubi"><div class="roam-bubble" id="roamBubble"></div><div class="roam-body" id="roamBody"></div></div>
 
 <div class="kbd-help" id="kbdHelp" hidden><div class="card"><h3>Keyboard shortcuts</h3>
   <div class="k"><span>Search pods</span><kbd>/</kbd></div><div class="k"><span>Problems only</span><kbd>p</kbd></div>
@@ -1622,90 +1683,7 @@ function render() {
   renderShell(s);
   ({ overview: () => renderOverview(s), pods: renderPods, nodes: renderNodes, insights: renderInsights, events: renderEvents })[view]();
   if (wall) renderWall(s);
-  roamUpdate(s);
 }
-
-// ---------- Kubi walks around the home page ----------
-// He wanders along the bottom, stops to look around or wave, says how the cluster is doing,
-// and runs around in a panic when something is critical. Click him for a summary.
-const roam = { x: 40, dir: 1, timer: 0, state: "ok", s: null, mood: "" };
-function roamBounds() {
-  const side = innerWidth > 820 ? 252 : 0, w = $("roamer").offsetWidth || 104;
-  return [side + 12, innerWidth - w - 16];
-}
-function roamSet(mood) {
-  if (roam.mood === mood) return;
-  roam.mood = mood;
-  $("roamBody").innerHTML = mascot(mood, innerWidth > 820 ? 124 : 96);
-}
-function roamSay(text, bad, ms = 3200) {
-  const b = $("roamBubble");
-  b.textContent = text; b.classList.toggle("bad", !!bad); b.classList.add("show");
-  clearTimeout(roam.sayTimer); roam.sayTimer = setTimeout(() => b.classList.remove("show"), ms);
-}
-function roamLine() {
-  const s = roam.s; if (!s) return "Hi! 👋";
-  const bad = s.bad.length, att = s.att.length;
-  if (s.state === "bad") return bad ? `${plural(bad, "pod")} failing! Click me 🚨` : "A node is down! 🚨";
-  if (s.state === "warn") return `${plural(att, "pod")} need a look 👀`;
-  return ["All systems healthy ✨", "Nothing on fire today 🧯", `${data.pods.length} pods, all happy 💛`, "Quiet shift so far ☕", "Uptime looking good 📈"][Math.floor(Math.random() * 5)];
-}
-function roamStep() {
-  clearTimeout(roam.timer);
-  const el = $("roamer");
-  if (el.hidden) return;
-  const [lo, hi] = roamBounds(), panic = roam.state === "bad";
-  if (matchMedia("(prefers-reduced-motion: reduce)").matches) {   // stand still at the right, just react
-    el.style.transitionDuration = "0s"; el.style.transform = `translateX(${hi}px)`; roamSet(MOOD[roam.state] || "happy"); return;
-  }
-  const dist = 120 + Math.random() * Math.min(520, hi - lo);
-  let target = roam.x + (Math.random() < .5 ? -1 : 1) * dist;
-  target = Math.max(lo, Math.min(hi, target));
-  if (Math.abs(target - roam.x) < 60) target = roam.x < (lo + hi) / 2 ? hi : lo;
-  const speed = panic ? 260 : 85, secs = Math.abs(target - roam.x) / speed;
-  roam.dir = target > roam.x ? 1 : -1;
-  $("roamBody").classList.toggle("left", roam.dir < 0);
-  roamSet(panic ? "panic" : roam.state === "warn" ? "worried" : "happy");
-  el.classList.add("walking"); el.classList.toggle("running", panic);
-  el.style.transitionDuration = secs + "s";
-  el.style.transform = `translateX(${target}px)`;
-  roam.x = target;
-  roam.timer = setTimeout(() => {
-    el.classList.remove("walking", "running");
-    // Pause: look around, wave, give a thumbs up, or tell you how it's going
-    const r = Math.random();
-    if (panic) { roamSet("panic"); roamSay(roamLine(), true, 2200); }
-    else if (roam.state === "warn") { roamSet(r < .5 ? "worried" : "thinking"); if (r < .6) roamSay(roamLine()); }
-    else { roamSet(["happy", "wave", "thumbs", "cool", "happy"][Math.floor(r * 5)]); if (r < .45) roamSay(roamLine()); }
-    roam.timer = setTimeout(roamStep, panic ? 900 + Math.random() * 800 : 2600 + Math.random() * 3200);
-  }, secs * 1000);
-}
-function roamUpdate(s) {
-  roam.s = s;
-  const show = view === "overview" && !wall && !PUBLIC_WALL;
-  const el = $("roamer");
-  document.body.classList.toggle("roaming", show);
-  if (!show) { if (!el.hidden) { el.hidden = true; clearTimeout(roam.timer); } return; }
-  const changed = roam.state !== s.state;
-  roam.state = s.state;
-  if (el.hidden) {
-    el.hidden = false;
-    const [lo] = roamBounds(); roam.x = lo; el.style.transitionDuration = "0s"; el.style.transform = `translateX(${lo}px)`;
-    roam.mood = ""; roamSet("wave"); roamSay(`Hi ${$("userName").textContent || "there"}! ${roamLine()}`, s.state === "bad");
-    roam.timer = setTimeout(roamStep, 2200);
-  } else if (changed) {
-    // React straight away when the cluster changes
-    roamSet(s.state === "bad" ? "panic" : s.state === "warn" ? "worried" : "celebrate");
-    roamSay(s.state === "ok" ? "All clear again! 🎉" : roamLine(), s.state === "bad");
-  }
-}
-$("roamer").addEventListener("click", () => {
-  const el = $("roamer");
-  el.classList.remove("jump"); void el.offsetWidth; el.classList.add("jump");
-  if (roam.state === "bad" || roam.state === "warn") { roamSay("Let's take a look 🔍", roam.state === "bad", 1800); setTimeout(() => { location.hash = "pods?problems=1"; }, 600); }
-  else { roamSet("celebrate"); roamSay(roamLine()); }
-});
-addEventListener("resize", () => { if (!$("roamer").hidden) roamStep(); });
 
 // ---------- Sound alerts (Web Audio, no files) ----------
 
@@ -2152,21 +2130,22 @@ function showLogin() {
   document.body.classList.add("signed-out");
   $("login").hidden = false;
   $("login").classList.remove("out");
-  setDoc("wave", "Hi! I'm Kubi, your on-call buddy 👋");
+  setDoc("working", "Night shift. All quiet so far ☕");
   $("wallLink").href = BASE + "wall";
-  // Code chips, rings and dots drifting up behind everything
-  $("loginBg").innerHTML = Array.from({ length: 18 }, (_, i) => {
-    const kind = ["p", "x", "d"][i % 3];
-    return `<i class="${kind}" style="left:${(i * 53) % 100}%;animation-duration:${14 + (i * 7) % 12}s;animation-delay:-${(i * 3.1) % 14}s;--r:${i % 2 ? 200 : -160}deg"></i>`;
-  }).join("");
+  // Blinking lights on the server rack
+  $("rmLeds").innerHTML = Array.from({ length: 8 }, (_, u) => [0, 1, 2].map((k) => {
+    const c = ["#30d158", "#30d158", "#0a84ff", "#ffd60a"][(u + k) % 4];
+    return `<circle class="led" cx="${64 + k * 10}" cy="${235 + u * 36}" r="2.6" fill="${c}" style="animation-delay:-${((u * 3 + k) * .37) % 1.8}s;animation-duration:${1.2 + ((u + k) % 4) * .5}s"/>`;
+  }).join("") + `<rect x="100" y="${232 + u * 36}" width="40" height="6" rx="2" fill="#262a35"/>`).join("");
+  setTimeout(() => { if (document.activeElement !== $("lu") && document.activeElement !== $("lp")) setDoc("wave", "Hi! I'm Kubi, your on-call buddy 👋"); }, 2200);
   setTimeout(() => $("lu").focus(), 600);
 }
 // Kubi covers his eyes while you type the password
 $("lp").addEventListener("focus", () => setDoc("shy", "I'm not looking! 🙈"));
 $("lp").addEventListener("input", () => setDoc("shy", "I'm not looking! 🙈"));
-$("lp").addEventListener("blur", () => setDoc("happy"));
-$("lu").addEventListener("focus", () => setDoc("happy", $("lu").value ? `Nice to see you, ${$("lu").value}!` : "Who's on call today?"));
-$("lu").addEventListener("input", () => setDoc("happy", $("lu").value ? `Nice to see you, ${$("lu").value}!` : "Who's on call today?"));
+$("lp").addEventListener("blur", () => setDoc("working", "Back to work… ⌨️"));
+$("lu").addEventListener("focus", () => setDoc("wave", $("lu").value ? `Nice to see you, ${$("lu").value}!` : "Who's on call today?"));
+$("lu").addEventListener("input", () => setDoc("wave", $("lu").value ? `Nice to see you, ${$("lu").value}!` : "Who's on call today?"));
 
 function setUser(user, auth) {
   $("userChip").hidden = !auth || !user;
@@ -2186,7 +2165,7 @@ $("loginForm").addEventListener("submit", async (e) => {
     $("login").classList.add("out");
     setUser(me.user, true);
     setTimeout(() => {
-      $("login").hidden = true; $("loginBg").innerHTML = "";
+      $("login").hidden = true;
       document.body.classList.remove("signed-out"); document.body.classList.add("app-in");
       $("lp").value = "";
       start();
