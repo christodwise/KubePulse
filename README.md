@@ -21,7 +21,7 @@ Kubernetes. The screenshots use demo data.
 
 **See the cluster at a glance**
 - Health score, cluster CPU / memory / pod trends, and a list of what needs attention right now
-- **Doc**, a little robot doctor with a screen for a face, a head mirror and a stethoscope, sits in the health ring: he waves when everything's fine, sweats when something is degraded, panics when it's critical, and dozes off when the data is stale
+- **Kubi**, a little robot IT engineer with glowing yellow eyes and a headset, has an expression for every moment: grinning when the cluster is healthy, sweating when it's degraded, panicking when it's critical, asleep when data is stale, celebrating when all is clear, and thinking or typing away while he diagnoses a pod
 - A **cluster map**: every node as a card, every pod as a dot, coloured by status; failing pods breathe red
 - Pods, Nodes and Events pages with search and filters. The URL keeps your filters, so `/#pods?ns=prod&problems=1` is a link you can share
 
@@ -37,19 +37,19 @@ Kubernetes. The screenshots use demo data.
 
 **Get told when something breaks**
 - **Mattermost alerts** for failing pods, pods stuck pending or not ready, OOM kills, nodes going NotReady, certificates about to expire, volumes filling up, and recoveries. Each problem alerts once; flapping problems are held back. Every kind of problem has its own emoji (🧠 out of memory, 🔁 crash loop, 📦 image pull, ⏳ pending, 🖥️ node, 🔐 certificate, 💾 volume), and recoveries arrive as ✅ All clear 🎉
-- **Wallboard / NOC mode** for an office TV at `/wall`: big status with Doc, a heartbeat line, the map and a 24-hour view that rotate, active incidents, and the whole screen turns red when something is critical. If the data goes stale, the board greys out behind a clear warning instead of showing old numbers as live
+- **Wallboard / NOC mode** for an office TV at `/wall`: big status with Kubi, a heartbeat line, the map and a 24-hour view that rotate, active incidents, and the whole screen turns red when something is critical. If the data goes stale, the board greys out behind a clear warning instead of showing old numbers as live
 - Optional **sound**: a monitor beep when a pod starts failing, a flatline when a node goes down, a chime when everything recovers. Browsers only allow audio after a click, so after a reload the wallboard shows *Tap to enable sound*
 
 **Signed in, except the TV**
-- A sign-in page protects everything: pods, logs, events and diagnosis. It's a small show of its own: a drifting network and a live heartbeat behind a glass card, and Doc, who waves while you type your name, covers his eyes while you type your password, sweats when it's wrong and jumps for joy when you're in. The **wallboard at `/wall` stays public**, so an office TV can show it without anyone signing in, and it only receives what it displays
+- A sign-in page protects everything: pods, logs, events and diagnosis. It's a small show of its own: a drifting network and a live heartbeat behind a glass card, and Kubi, who greets you, covers his eyes while you type your password, looks sad when it's wrong and celebrates when you're in.
 
 **Keyboard**: `/` search · `p` problems only · `t` theme · `f` wallboard · `s` sound · `1`–`5` pages · `?` help
 
 ## Screenshots
 
-**Meet Doc.** He waves when all is well, sweats when something is degraded, sounds the siren when it's critical, and dozes off when the data goes stale.
+**Meet Kubi.** One robot, twelve moods, each used where it fits.
 
-![Doc's moods](docs/doc-moods.png)
+![Kubi's moods](docs/kubi-moods.png)
 
 | Sign in | Diagnose |
 |---|---|

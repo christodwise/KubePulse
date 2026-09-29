@@ -412,108 +412,121 @@
   .ai-meta { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; flex-wrap: wrap; }
   .ai-meta .grow { flex: 1; }
 
-  /* ---------- Sign in: dark and cinematic, whatever the theme ---------- */
-  @property --edge { syntax: "<angle>"; initial-value: 0deg; inherits: false; }
-  .login { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 20px; overflow: hidden; color: #f5f5f7;
-           background: radial-gradient(1200px 800px at 50% 110%, #0b1e3d, transparent 70%), #03040a; }
-  .login::before, .login::after { content: ""; position: absolute; width: 90vmax; height: 90vmax; border-radius: 50%; filter: blur(110px); opacity: .5; pointer-events: none; }
-  .login::before { background: conic-gradient(from 0deg, #0a84ff, #5e5ce6, #30d158, #0a84ff); left: -45vmax; top: -55vmax; animation: aurora 26s linear infinite; }
-  .login::after { background: conic-gradient(from 180deg, #64d2ff, #bf5af2, #0a84ff, #64d2ff); right: -50vmax; bottom: -60vmax; opacity: .32; animation: aurora 34s linear infinite reverse; }
-  @keyframes aurora { to { transform: rotate(360deg); } }
-  #loginFx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
-  .login-stage { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; width: min(420px, 100%); }
-  .login-doc { position: relative; z-index: 2; margin-bottom: -92px; animation: docIn 1.1s var(--spring) both; }
-  .login-doc .halo { position: absolute; left: 50%; top: 48%; width: 300px; height: 300px; transform: translate(-50%, -50%); border-radius: 50%; z-index: -1;
-                     background: conic-gradient(from var(--edge), transparent, rgba(100, 210, 255, .55), transparent 40%, rgba(48, 209, 88, .45), transparent 75%);
-                     filter: blur(28px); animation: spinEdge 6s linear infinite; }
-  .login-doc .ring2 { position: absolute; left: 50%; top: 50%; width: 270px; height: 270px; transform: translate(-50%, -50%); border-radius: 50%; z-index: -1;
-                      border: 1px solid rgba(100, 210, 255, .22); animation: pulseRing 3.2s ease-out infinite; }
-  .login-doc .ring2 + .ring2 { animation-delay: 1.6s; }
-  @keyframes pulseRing { from { transform: translate(-50%, -50%) scale(.7); opacity: .9; } to { transform: translate(-50%, -50%) scale(1.35); opacity: 0; } }
-  @keyframes docIn { from { opacity: 0; transform: translateY(40px) scale(.7); } }
-  @keyframes spinEdge { to { --edge: 360deg; } }
-  .login-doc.jump { animation: jump .7s var(--spring); }
-  @keyframes jump { 35% { transform: translateY(-34px) scale(1.06); } 60% { transform: translateY(4px) scale(.98); } }
-  .login-card { position: relative; width: 100%; padding: 108px 34px 28px; border-radius: 32px; text-align: center;
-                background: rgba(18, 20, 28, .58); -webkit-backdrop-filter: saturate(160%) blur(30px); backdrop-filter: saturate(160%) blur(30px);
-                box-shadow: 0 50px 120px -30px rgba(0, 0, 0, .8), inset 0 1px 0 rgba(255, 255, 255, .08); animation: cardIn .9s var(--spring) .1s both; }
-  /* A light running around the card's edge */
-  .login-card::before { content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1.2px; pointer-events: none;
-                        background: conic-gradient(from var(--edge), rgba(255, 255, 255, .08) 0deg, rgba(100, 210, 255, .9) 40deg, rgba(48, 209, 88, .7) 80deg, rgba(255, 255, 255, .08) 140deg, rgba(255, 255, 255, .08) 360deg);
-                        -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude;
-                        animation: spinEdge 5s linear infinite; }
-  @keyframes cardIn { from { opacity: 0; transform: translateY(30px) scale(.96); filter: blur(8px); } }
+  /* ---------- Sign in: bright and playful, Kubi talks to you ---------- */
+  .login { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 24px; overflow: hidden;
+           background: radial-gradient(900px 600px at 15% 20%, #d7f5f1, transparent 65%), radial-gradient(800px 600px at 90% 10%, #e3ecff, transparent 60%),
+                       radial-gradient(900px 700px at 70% 100%, #fff0e4, transparent 60%), #f7f8fb; }
+  :root[data-theme="dark"] .login { background: radial-gradient(900px 600px at 15% 20%, #0f3a36, transparent 65%), radial-gradient(800px 600px at 90% 10%, #172444, transparent 60%), #07080c; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .login { background: radial-gradient(900px 600px at 15% 20%, #0f3a36, transparent 65%), radial-gradient(800px 600px at 90% 10%, #172444, transparent 60%), #07080c; } }
+  /* Little pills and crosses drifting up in the background */
+  .login-bg { position: absolute; inset: 0; pointer-events: none; }
+  .login-bg i { position: absolute; bottom: -40px; opacity: 0; animation: floatUp linear infinite; }
+  .login-bg i.p { width: 26px; height: 26px; border-radius: 7px; background: #ffd60a; box-shadow: 0 6px 14px rgba(255, 214, 10, .35); }
+  .login-bg i.p::after { content: "</>"; position: absolute; inset: 0; display: grid; place-items: center; font: 700 10px var(--mono); color: #7a5c00; }
+  .login-bg i.x { width: 22px; height: 22px; border-radius: 50%; border: 3px solid #5ac8fa; }
+  .login-bg i.d { width: 12px; height: 12px; border-radius: 50%; background: #7fb4ff; }
+  @keyframes floatUp { 10% { opacity: .7; } 90% { opacity: .7; } to { transform: translateY(-110vh) rotate(var(--r, 180deg)); opacity: 0; } }
+  .login-wrap { position: relative; z-index: 1; display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 40px; align-items: center; width: min(960px, 100%); }
+  .login-hero { position: relative; display: flex; flex-direction: column; align-items: center; animation: rise .9s var(--spring) both; }
+  .bubble { position: relative; max-width: 360px; padding: 14px 20px; margin-bottom: 18px; border-radius: 22px; font-size: 17px; font-weight: 600; letter-spacing: -.015em;
+            background: var(--surface); color: var(--ink); box-shadow: 0 18px 40px -18px rgba(0, 0, 0, .25); text-align: center; }
+  .bubble::after { content: ""; position: absolute; left: 50%; bottom: -9px; width: 18px; height: 18px; background: inherit; transform: translateX(-50%) rotate(45deg); border-radius: 3px; }
+  .bubble.pop { animation: pop2 .45s var(--spring); }
+  @keyframes pop2 { from { transform: scale(.85); opacity: .3; } }
+  .login-doc { position: relative; }
+  .login-doc.jump { animation: jump .8s var(--spring); }
+  @keyframes jump { 35% { transform: translateY(-40px); } 60% { transform: translateY(6px); } }
+  .floor { width: 260px; height: 26px; margin-top: -18px; border-radius: 50%; background: radial-gradient(closest-side, rgba(22, 179, 168, .22), transparent); }
+  .login-card { position: relative; padding: 34px 32px 28px; border-radius: 30px; background: var(--glass-strong); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur);
+                border: 1px solid var(--glass-edge); box-shadow: 0 40px 90px -30px rgba(0, 0, 0, .3); animation: cardIn .9s var(--spring) .1s both; }
+  @keyframes cardIn { from { opacity: 0; transform: translateY(24px) scale(.97); } }
   .login-card > * { animation: rise .7s var(--spring) both; }
-  .login-card > :nth-child(1) { animation-delay: .35s; } .login-card > :nth-child(2) { animation-delay: .42s; }
-  .login-card > :nth-child(3) { animation-delay: .5s; } .login-card > :nth-child(4) { animation-delay: .56s; }
-  .login-card > :nth-child(5) { animation-delay: .62s; } .login-card > :nth-child(6) { animation-delay: .68s; }
-  .login-card > :nth-child(n+7) { animation-delay: .74s; }
-  .login-card h1 { margin: 0 0 6px; font-size: 30px; font-weight: 700; letter-spacing: -.035em;
-                   background: linear-gradient(90deg, #fff 0%, #9fd8ff 30%, #fff 60%); background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent;
-                   animation: rise .7s var(--spring) .35s both, sheen 6s ease-in-out 1.2s infinite; }
-  @keyframes sheen { 50% { background-position: 100% 0; } }
-  .login-card .tagline { margin: 0 0 26px; color: #98989d; font-size: 14px; }
-  .login-card .tagline .live { all: unset; color: #30d158; font-weight: 600; }
-  .field { position: relative; margin-bottom: 14px; text-align: left; }
-  .field input { width: 100%; height: 52px; padding: 18px 16px 0 44px; border-radius: 14px; border: 1px solid rgba(255, 255, 255, .1); color: #f5f5f7; font-size: 15px;
-                 background: rgba(255, 255, 255, .06); transition: border-color .25s, box-shadow .25s, background .25s; }
-  .field input:focus { outline: none; border-color: rgba(100, 210, 255, .7); background: rgba(255, 255, 255, .09); box-shadow: 0 0 0 4px rgba(10, 132, 255, .25), 0 0 30px -6px rgba(100, 210, 255, .5); }
-  .field label { position: absolute; left: 44px; top: 16px; font-size: 15px; color: #8e8e93; pointer-events: none; transition: all .25s var(--spring); margin: 0; }
-  .field input:focus + label, .field input:not(:placeholder-shown) + label { top: 8px; font-size: 11px; color: #64d2ff; font-weight: 600; letter-spacing: .02em; }
-  .field svg { position: absolute; left: 15px; top: 17px; width: 18px; height: 18px; color: #8e8e93; transition: color .25s; }
-  .field input:focus ~ svg { color: #64d2ff; }
-  .login-err { min-height: 20px; color: #ff6961; font-size: 13px; margin: 2px 0 8px; }
-  .login-card .go { position: relative; overflow: hidden; width: 100%; height: 52px; border: 0; border-radius: 14px; color: #fff; font-size: 16px; font-weight: 600;
-                    background: linear-gradient(135deg, #0a84ff, #5e5ce6); box-shadow: 0 12px 30px -10px rgba(10, 132, 255, .8); transition: transform .25s var(--spring), box-shadow .25s; }
-  .login-card .go::after { content: ""; position: absolute; inset: 0; background: linear-gradient(110deg, transparent 30%, rgba(255, 255, 255, .45) 50%, transparent 70%);
+  .login-card > :nth-child(2) { animation-delay: .1s; } .login-card > :nth-child(3) { animation-delay: .16s; } .login-card > :nth-child(4) { animation-delay: .22s; }
+  .login-card > :nth-child(5) { animation-delay: .28s; } .login-card > :nth-child(n+6) { animation-delay: .34s; }
+  .login-brand { display: flex; align-items: center; gap: 10px; margin-bottom: 22px; }
+  .login-brand .logo { height: 30px; }
+  .login-brand b { display: block; font-size: 17px; font-weight: 700; letter-spacing: -.02em; }
+  .login-brand small { color: var(--muted); font-size: 12px; }
+  .login-card h1 { margin: 0 0 4px; font-size: 30px; font-weight: 700; letter-spacing: -.035em; }
+  .login-card .tagline { margin: 0 0 22px; color: var(--muted); font-size: 14px; }
+  .field { position: relative; margin-bottom: 12px; }
+  .field input { width: 100%; height: 54px; padding: 18px 16px 0 46px; border-radius: 14px; border: 1.5px solid transparent; background: var(--fill); font-size: 15px;
+                 transition: border-color .25s, box-shadow .25s, background .25s; }
+  .field input:focus { outline: none; background: var(--surface); border-color: var(--brand); box-shadow: 0 0 0 5px color-mix(in srgb, var(--brand) 18%, transparent); }
+  .field label { position: absolute; left: 46px; top: 17px; font-size: 15px; color: var(--muted); pointer-events: none; transition: all .25s var(--spring); margin: 0; }
+  .field input:focus + label, .field input:not(:placeholder-shown) + label { top: 8px; font-size: 11px; color: var(--brand); font-weight: 600; }
+  .field svg { position: absolute; left: 16px; top: 18px; width: 18px; height: 18px; color: var(--muted); transition: color .25s; }
+  .field input:focus ~ svg { color: var(--brand); }
+  .login-err { min-height: 20px; color: var(--bad); font-size: 13px; margin: 0 0 8px; }
+  .login-card .go { position: relative; overflow: hidden; width: 100%; height: 54px; border: 0; border-radius: 14px; color: #fff; font-size: 16px; font-weight: 600;
+                    background: linear-gradient(135deg, #14b8a6, #0a84ff); box-shadow: 0 14px 30px -12px rgba(10, 132, 255, .7); transition: transform .25s var(--spring), box-shadow .25s; }
+  .login-card .go::after { content: ""; position: absolute; inset: 0; background: linear-gradient(110deg, transparent 30%, rgba(255, 255, 255, .4) 50%, transparent 70%);
                            transform: translateX(-120%); animation: shimmer 3.4s ease-in-out 1.5s infinite; }
-  .login-card .go:hover { transform: translateY(-1px); box-shadow: 0 18px 40px -12px rgba(10, 132, 255, .9); }
-  .login-card .go:active { transform: scale(.97); }
-  .login-card .go:disabled { cursor: default; }
+  .login-card .go:hover { transform: translateY(-1px); } .login-card .go:active { transform: scale(.97); }
   .login-card .go.busy { color: transparent; }
   .login-card .go.busy::before { content: ""; position: absolute; left: 50%; top: 50%; width: 20px; height: 20px; margin: -10px 0 0 -10px; border-radius: 50%;
                                  border: 2.5px solid rgba(255, 255, 255, .35); border-top-color: #fff; animation: spin .7s linear infinite; }
   @keyframes shimmer { 60%, 100% { transform: translateX(120%); } }
   .login-card.shake { animation: shake .5s cubic-bezier(.36, .07, .19, .97); }
   @keyframes shake { 20%, 60% { transform: translateX(-10px); } 40%, 80% { transform: translateX(10px); } }
-  .login-foot { margin-top: 20px; font-size: 13px; color: #8e8e93; }
-  .login-foot .logo { height: 16px; vertical-align: -3px; margin-right: 5px; }
-  .login-foot a { color: #64d2ff; }
-  .login.out .login-card { animation: cardOut .6s var(--spring) forwards; }
-  .login.out { animation: fadeOut .8s ease .25s forwards; }
-  @keyframes cardOut { to { opacity: 0; transform: translateY(-20px) scale(.94); filter: blur(6px); } }
+  .login-foot { margin-top: 18px; font-size: 13px; color: var(--muted); text-align: center; }
+  .login.out .login-card, .login.out .login-hero { animation: cardOut .6s var(--spring) .35s forwards; }
+  .login.out { animation: fadeOut .7s ease .6s forwards; }
+  @keyframes cardOut { to { opacity: 0; transform: translateY(-16px) scale(.96); } }
   @keyframes fadeOut { to { opacity: 0; } }
   body.app-in .app { animation: appIn .9s var(--spring) both; }
   @keyframes appIn { from { opacity: 0; transform: scale(.985); filter: blur(6px); } }
-  @media (max-width: 480px) { .login-doc .mascot { width: 180px; height: 180px; } .login-doc { margin-bottom: -66px; } .login-card { padding-top: 82px; } }
+  @media (max-width: 860px) {
+    .login-wrap { grid-template-columns: 1fr; gap: 12px; justify-items: center; }
+    .login-hero .mascot { width: 150px; height: 178px; } .bubble { font-size: 15px; margin-bottom: 10px; }
+    .login-card { width: min(420px, 100%); }
+  }
 
-  /* ---------- Doc, the mascot: a little robot doctor ---------- */
+  /* ---------- Kubi, the mascot ---------- */
   .mascot { overflow: visible; }
-  .mascot .body { animation: bob 3.6s ease-in-out infinite; transform-box: view-box; transform-origin: 70px 128px; }
-  .mascot .shadow { animation: shadow 3.6s ease-in-out infinite; transform-box: view-box; transform-origin: 70px 132px; }
-  .mascot .eyes { animation: blink 5s infinite; transform-box: view-box; transform-origin: 70px 58px; }
-  .mascot .wave { animation: wave 2.4s ease-in-out infinite; transform-box: view-box; transform-origin: 112px 72px; }
-  .mascot .ecgline { animation: scan 2.2s linear infinite; }
-  .mascot .glint { animation: glint 3.2s ease-in-out infinite; transform-box: view-box; transform-origin: 44px 20px; }
-  .mascot .led { animation: led 1.4s steps(2, jump-none) infinite; }
-  .mascot .sweat { animation: sweat 1.8s ease-in infinite; }
-  .mascot .zz { animation: zz 3s ease-in-out infinite; opacity: 0; }
-  .mascot .zz + .zz { animation-delay: 1.5s; }
-  .mascot .siren { animation: siren .6s ease-in-out infinite alternate; }
-  .mascot.alarmed .body { animation: jitter .3s linear infinite; }
+  .mascot .body { animation: bob 3.4s ease-in-out infinite; transform-box: view-box; transform-origin: 80px 176px; }
+  .mascot .shadow { animation: shadow 3.4s ease-in-out infinite; transform-box: view-box; transform-origin: 80px 182px; }
+  .mascot .eyes { animation: blink 4.6s infinite; transform-box: view-box; transform-origin: 80px 72px; }
+  .mascot.happy .iris, .mascot.wave .iris, .mascot.thumbs .iris { animation: look 7s ease-in-out infinite; }
+  .mascot .wave { animation: wave 1.6s ease-in-out infinite; transform-box: view-box; transform-origin: 100px 128px; }
+  .mascot .cheer { animation: cheer .7s ease-in-out infinite alternate; transform-box: view-box; transform-origin: 60px 128px; }
+  .mascot .cheer.r { transform-origin: 100px 128px; animation-delay: .35s; }
+  .mascot .flail { animation: flail .28s ease-in-out infinite alternate; transform-box: view-box; transform-origin: 60px 128px; }
+  .mascot .flail.r { transform-origin: 100px 128px; animation-delay: .14s; }
+  .mascot .scan { animation: scan 2.4s ease-in-out infinite; transform-box: view-box; transform-origin: 118px 114px; }
+  .mascot .peek { animation: peek 3s ease-in-out infinite; }
+  .mascot .type { animation: type .32s ease-in-out infinite alternate; } .mascot .type.r { animation-delay: .16s; }
+  @keyframes type { to { transform: translateY(-3px); } }
+  .mascot .dots circle { animation: dot 1.4s ease-in-out infinite; }
+  .mascot .dots circle:nth-child(2) { animation-delay: .2s; } .mascot .dots circle:nth-child(3) { animation-delay: .4s; }
+  .mascot .confetti rect { animation: confetti 2.2s linear infinite; transform-box: fill-box; }
+  .mascot .drop { animation: drip 1.6s ease-in infinite; } .mascot .drop.d2 { animation-delay: .8s; }
+  .mascot .tear { animation: drip 2.4s ease-in infinite; }
+  .mascot .zz { animation: zz 3s ease-in-out infinite; opacity: 0; } .mascot .zz + .zz { animation-delay: 1.5s; }
+  .mascot .led { animation: led 1.2s steps(2, jump-none) infinite; }
+  .mascot .glint { animation: glint 3s ease-in-out infinite; }
+  .mascot.celebrate .body { animation: hop .7s ease-in-out infinite; }
+  .mascot.panic .body { animation: jitter .26s linear infinite; }
   .mascot.sleep .body { animation: bob 6s ease-in-out infinite; }
-  .mascot.sleep .ecgline { animation-duration: 6s; }
-  @keyframes bob { 50% { transform: translateY(-5px); } }
-  @keyframes shadow { 50% { transform: scaleX(.82); opacity: .6; } }
-  @keyframes blink { 0%, 46%, 50%, 100% { transform: scaleY(1); } 48% { transform: scaleY(.1); } }
-  @keyframes wave { 0%, 100% { transform: rotate(0deg); } 15% { transform: rotate(-26deg); } 30% { transform: rotate(8deg); } 45% { transform: rotate(-22deg); } 60% { transform: rotate(0deg); } }
-  @keyframes scan { from { transform: translateX(0); } to { transform: translateX(-32px); } }
-  @keyframes glint { 0%, 70%, 100% { opacity: 0; transform: scale(.4) rotate(0deg); } 80% { opacity: 1; transform: scale(1) rotate(45deg); } }
-  @keyframes led { 50% { opacity: .25; } }
-  @keyframes sweat { 0% { transform: translateY(0); opacity: 0; } 20% { opacity: 1; } 100% { transform: translateY(14px); opacity: 0; } }
+  .mascot.cool .body { animation: groove 1.6s ease-in-out infinite; transform-origin: 80px 176px; }
+  @keyframes bob { 50% { transform: translateY(-5px) scale(1.01, .99); } }
+  @keyframes shadow { 50% { transform: scaleX(.85); opacity: .6; } }
+  @keyframes blink { 0%, 44%, 48%, 100% { transform: scaleY(1); } 46% { transform: scaleY(.08); } }
+  @keyframes look { 0%, 30%, 100% { transform: translateX(0); } 40%, 55% { transform: translateX(-3px); } 65%, 80% { transform: translateX(3px); } }
+  @keyframes wave { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-24deg); } 50% { transform: rotate(6deg); } 75% { transform: rotate(-18deg); } }
+  @keyframes cheer { to { transform: rotate(-14deg) translateY(-3px); } }
+  @keyframes flail { from { transform: rotate(-18deg); } to { transform: rotate(16deg); } }
+  @keyframes scan { 50% { transform: rotate(-16deg) translateY(-4px); } }
+  @keyframes peek { 0%, 60%, 100% { transform: translateY(0); } 70%, 88% { transform: translateY(9px); } }
+  @keyframes dot { 50% { opacity: .25; transform: translateY(-2px); } }
+  @keyframes confetti { from { transform: translateY(0) rotate(0); opacity: 1; } to { transform: translateY(190px) rotate(540deg); opacity: 0; } }
+  @keyframes drip { 0% { transform: translateY(0); opacity: 0; } 20% { opacity: 1; } 100% { transform: translateY(18px); opacity: 0; } }
   @keyframes zz { 0% { transform: translate(0, 0); opacity: 0; } 30% { opacity: 1; } 100% { transform: translate(12px, -22px); opacity: 0; } }
-  @keyframes siren { to { opacity: .25; } }
-  @keyframes jitter { 25% { transform: translate(-1.6px, .6px) rotate(-1.4deg); } 75% { transform: translate(1.6px, -.6px) rotate(1.4deg); } }
+  @keyframes led { 50% { opacity: .25; } }
+  @keyframes glint { 0%, 70%, 100% { opacity: 0; } 80% { opacity: .9; } }
+  @keyframes hop { 50% { transform: translateY(-12px) scale(1.02, .98); } }
+  @keyframes jitter { 25% { transform: translate(-2px, .5px) rotate(-1.5deg); } 75% { transform: translate(2px, -.5px) rotate(1.5deg); } }
+  @keyframes groove { 25% { transform: rotate(-3deg); } 75% { transform: rotate(3deg); } }
 
   /* ---------- Motion: views ease in, cards follow ---------- */
   @keyframes rise { from { opacity: 0; transform: translateY(14px) scale(.985); } }
@@ -659,19 +672,24 @@
 <div class="backdrop" aria-hidden="true"><i></i><i></i><i></i></div>
 
 <div class="login" id="login" hidden>
-  <canvas id="loginFx" aria-hidden="true"></canvas>
-  <div class="login-stage">
-    <div class="login-doc" id="loginDoc"><span class="halo"></span><span class="ring2"></span><span class="ring2"></span><div id="loginMascot"></div></div>
+  <div class="login-bg" id="loginBg" aria-hidden="true"></div>
+  <div class="login-wrap">
+    <section class="login-hero">
+      <div class="bubble" id="loginBubble">Hi! I'm Kubi, your on-call buddy 👋</div>
+      <div class="login-doc" id="loginDoc"><div id="loginMascot"></div></div>
+      <div class="floor"></div>
+    </section>
     <form class="login-card" id="loginForm">
-      <h1>Welcome to KubePulse</h1>
-      <p class="tagline">Know before it breaks. <span class="live">● Watching your cluster</span></p>
+      <div class="login-brand"><span class="logo" role="img" aria-label="Lifetrenz"></span><div><b>KubePulse</b><small>by Lifetrenz DevOps</small></div></div>
+      <h1>Sign in</h1>
+      <p class="tagline">Know before it breaks.</p>
       <div class="field"><input id="lu" name="username" autocomplete="username" autocapitalize="off" spellcheck="false" placeholder=" " required><label for="lu">Username</label>
         <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="10" cy="7" r="3.5"/><path d="M3.5 17c1.2-3.2 3.7-4.8 6.5-4.8s5.3 1.6 6.5 4.8"/></svg></div>
       <div class="field"><input id="lp" name="password" type="password" autocomplete="current-password" placeholder=" " required><label for="lp">Password</label>
         <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="9" width="12" height="8" rx="2"/><path d="M7 9V6.5a3 3 0 0 1 6 0V9"/></svg></div>
       <div class="login-err" id="loginErr" role="alert"></div>
       <button class="go" type="submit" id="loginBtn">Sign in</button>
-      <div class="login-foot"><span class="logo" role="img" aria-label="Lifetrenz"></span>Lifetrenz DevOps · <a class="linkbtn" id="wallLink" href="wall">Open the wallboard</a></div>
+      <div class="login-foot">Just want the TV view? <a class="linkbtn" id="wallLink" href="wall">Open the wallboard</a></div>
     </form>
   </div>
 </div>
@@ -847,76 +865,111 @@
 <script>
 const SUN = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="3"/><path d="M8 1v1.5M8 13.5V15M1 8h1.5M13.5 8H15M3 3l1 1M12 12l1 1M3 13l1-1M12 4l1-1"/></svg>';
 const MOON = '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M13.5 10.2A6 6 0 0 1 5.8 2.5a6 6 0 1 0 7.7 7.7z"/></svg>';
-// Doc, the mascot: a little robot doctor with a screen for a face.
-// Moods: happy (healthy), worried (degraded), alarmed (critical), sleep (no fresh data).
-const MOOD = { ok: "happy", warn: "worried", bad: "alarmed", muted: "sleep" };
-const MOOD_GLOW = { happy: "#64d2ff", worried: "#ffd60a", alarmed: "#ff453a", sleep: "#8e8e93", shy: "#ff9fd0" };
+// Kubi, the mascot: a little robot IT engineer with a big round head, glowing yellow eyes and a headset.
+// Each situation has its own expression (mood).
+const MOOD = { ok: "happy", warn: "worried", bad: "panic", muted: "sleep" };
 let mascotId = 0;
 function mascot(mood = "happy", size = 72) {
-  const g = MOOD_GLOW[mood] || MOOD_GLOW.happy, id = "doc" + (++mascotId);
-  const eyes = {
-    happy: `<path d="M50 60 q6 -8 12 0 M78 60 q6 -8 12 0" stroke="${g}" stroke-width="4" fill="none" stroke-linecap="round"/>`,
-    worried: `<rect x="51" y="52" width="9" height="12" rx="4.5" fill="${g}" transform="rotate(-10 55 58)"/><rect x="80" y="52" width="9" height="12" rx="4.5" fill="${g}" transform="rotate(10 85 58)"/>`,
-    alarmed: `<circle cx="56" cy="57" r="7.5" fill="none" stroke="${g}" stroke-width="3.5"/><circle cx="84" cy="57" r="7.5" fill="none" stroke="${g}" stroke-width="3.5"/><circle cx="56" cy="57" r="2.2" fill="${g}"/><circle cx="84" cy="57" r="2.2" fill="${g}"/>`,
-    sleep: `<path d="M50 59 h12 M78 59 h12" stroke="${g}" stroke-width="4" stroke-linecap="round"/>`,
-    shy: `<path d="M50 53 l10 5 l-10 5 M90 53 l-10 5 l10 5" stroke="${g}" stroke-width="3.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-          <ellipse cx="47" cy="71" rx="6" ry="3" fill="#ff6482" opacity=".6"/><ellipse cx="93" cy="71" rx="6" ry="3" fill="#ff6482" opacity=".6"/>`,
-  }[mood];
+  const id = "kubi" + (++mascotId), ink = "#1c1c1e", Y = "#ffd60a", YE = "#e0b400", metal = "#48484a";
+  const glow = { panic: ["#ffd9d6", "#ff8a80"], sad: ["#dbe8ff", "#9ec2ff"], sleep: ["#e5e5ea", "#c7c7cc"] }[mood] || ["#fffbe0", "#ffe36b"];
+  const look = { thinking: [-4, -5], sad: [0, 5], worried: [5, 1], working: [0, 6], panic: [0, 0] }[mood] || [0, 1];
+  const pr = mood === "panic" ? 3 : 5;
+  const eye = (x) => `<g class="eye"><ellipse cx="${x}" cy="72" rx="19" ry="21" fill="#2c2c2e"/><ellipse cx="${x}" cy="72" rx="16" ry="18" fill="url(#${id}e)"/>
+      <g class="iris"><circle cx="${x + look[0]}" cy="${73 + look[1]}" r="${pr}" fill="${ink}"/><circle cx="${x + look[0] + 1.6}" cy="${71 + look[1]}" r="${pr * .35}" fill="#fff"/></g>
+      <ellipse cx="${x - 6}" cy="63" rx="5" ry="3" fill="#fff" opacity=".7"/></g>`;
+  const lid = (x, d) => `<path d="${d}" fill="url(#${id}h)" clip-path="url(#${id}c${x})"/>`;
+  const lids = {
+    sleep: lid(60, "M40 50 h40 v24 q-20 6 -40 0z") + lid(100, "M80 50 h40 v24 q-20 6 -40 0z") + `<path d="M46 74 q14 8 28 0 M86 74 q14 8 28 0" stroke="${ink}" stroke-width="2.6" fill="none" stroke-linecap="round"/>`,
+    worried: lid(60, "M40 50 h40 v6 l-40 10z") + lid(100, "M80 50 h40 v16 l-40 -10z"),
+    sad: lid(60, "M40 50 h40 v12 l-40 -6z") + lid(100, "M80 50 h40 v6 l-40 6z"),
+  }[mood] || "";
+  const eyes = mood === "celebrate"
+    ? `<path d="M48 76 q12 -14 24 0 M88 76 q12 -14 24 0" stroke="${ink}" stroke-width="4.5" fill="none" stroke-linecap="round"/>`
+    : mood === "cool"
+    ? `<g><path d="M38 62 h40 q2 0 1 4 q-3 16 -20 16 q-16 0 -21 -16 q-1 -4 0 -4z M82 62 h40 q1 0 0 4 q-5 16 -21 16 q-17 0 -20 -16 q-1 -4 1 -4z" fill="#111"/>
+        <path d="M78 65 h4" stroke="#111" stroke-width="3"/><path class="glint" d="M46 66 l8 0 l-5 7z" fill="#fff" opacity=".75"/></g>`
+    : `<g class="eyes">${eye(60)}${eye(100)}</g>${lids}`;
+  const brows = {
+    worried: `<path d="M44 45 L70 50 M116 45 L90 50" stroke="${ink}" stroke-width="3.5" stroke-linecap="round"/>`,
+    sad: `<path d="M44 50 L70 44 M116 50 L90 44" stroke="${ink}" stroke-width="3.5" stroke-linecap="round"/>`,
+    panic: `<path d="M44 44 q14 -7 28 0 M88 44 q14 -7 28 0" stroke="${ink}" stroke-width="3.5" fill="none" stroke-linecap="round"/>`,
+    thinking: `<path d="M46 48 q12 -3 24 1 M90 43 q12 -5 24 0" stroke="${ink}" stroke-width="3.5" fill="none" stroke-linecap="round"/>`,
+  }[mood] || "";
+  const smile = `<path d="M70 101 Q80 109 90 101" stroke="${ink}" stroke-width="3.2" fill="none" stroke-linecap="round"/>`;
   const mouth = {
-    happy: `<path d="M63 68 q7 6 14 0" stroke="${g}" stroke-width="3.5" fill="none" stroke-linecap="round"/>`,
-    worried: `<path d="M63 71 q3.5 -3 7 0 t7 0" stroke="${g}" stroke-width="3" fill="none" stroke-linecap="round"/>`,
-    alarmed: `<rect x="65" y="66" width="10" height="7" rx="3.5" fill="${g}"/>`,
-    sleep: `<circle cx="70" cy="70" r="2.5" fill="${g}"/>`,
-    shy: `<path d="M65 71 q5 3 10 0" stroke="${g}" stroke-width="3" fill="none" stroke-linecap="round"/>`,
-  }[mood];
-  // A heartbeat that scrolls across the bottom of the screen: two periods, shifted by one in the animation
-  const beat = (x) => `l6 0 l3 -6 l4 11 l3 -8 l2 3 l14 0`.replace(/^/, `M${x} 78 `);
-  const arm = mood === "happy"
-    ? `<g class="wave"><path d="M112 72 L124 54" stroke="#c7c7cc" stroke-width="6" stroke-linecap="round"/><circle cx="125" cy="51" r="6" fill="#f2f2f7" stroke="#c7c7cc" stroke-width="2"/></g>`
-    : mood === "alarmed"
-    ? `<path d="M112 70 L126 52" stroke="#c7c7cc" stroke-width="6" stroke-linecap="round"/><circle cx="127" cy="49" r="6" fill="#f2f2f7" stroke="#c7c7cc" stroke-width="2"/>`
-    : `<path d="M112 76 L122 92" stroke="#c7c7cc" stroke-width="6" stroke-linecap="round"/><circle cx="123" cy="95" r="6" fill="#f2f2f7" stroke="#c7c7cc" stroke-width="2"/>`;
+    celebrate: `<path d="M66 99 Q80 118 94 99 Z" fill="#3a1d1d"/><ellipse cx="80" cy="108" rx="6" ry="3" fill="#ff7a8a"/>`,
+    thumbs: `<path d="M68 100 Q80 112 92 100 Z" fill="#3a1d1d"/>`,
+    worried: `<path d="M70 104 q5 -4 10 0 t10 0" stroke="${ink}" stroke-width="3" fill="none" stroke-linecap="round"/>`,
+    panic: `<ellipse cx="80" cy="105" rx="7" ry="8" fill="#3a1d1d"/>`,
+    sad: `<path d="M71 107 Q80 99 89 107" stroke="${ink}" stroke-width="3" fill="none" stroke-linecap="round"/>`,
+    sleep: `<ellipse cx="80" cy="104" rx="3.5" ry="4" fill="#3a1d1d"/>`,
+    thinking: `<path d="M73 104 q7 -3 14 1" stroke="${ink}" stroke-width="3" fill="none" stroke-linecap="round"/>`,
+    cool: `<path d="M70 101 Q82 109 92 98" stroke="${ink}" stroke-width="3.2" fill="none" stroke-linecap="round"/>`,
+    shy: `<path d="M73 102 Q80 107 87 102" stroke="${ink}" stroke-width="3" fill="none" stroke-linecap="round"/>`,
+  }[mood] || smile;
+  const blush = ["happy", "wave", "celebrate", "shy", "thumbs"].includes(mood)
+    ? `<ellipse cx="42" cy="96" rx="7" ry="4" fill="#ff6b8a" opacity=".45"/><ellipse cx="118" cy="96" rx="7" ry="4" fill="#ff6b8a" opacity=".45"/>` : "";
+
+  // Arms from the shoulders (60,128) and (100,128); hands are yellow
+  const hand = (x, y) => `<circle cx="${x}" cy="${y}" r="7.5" fill="${Y}" stroke="${YE}" stroke-width="1.5"/>`;
+  const arm = (d) => `<path d="${d}" stroke="${metal}" stroke-width="7" fill="none" stroke-linecap="round"/>`;
+  const hipL = arm("M60 128 Q44 136 54 150") + hand(56, 150), hipR = arm("M100 128 Q116 136 106 150") + hand(104, 150);
+  const downL = arm("M60 128 Q48 142 48 156") + hand(48, 159), downR = arm("M100 128 Q112 142 112 156") + hand(112, 159);
+  const arms = {
+    happy: hipL + hipR,
+    wave: hipL + `<g class="wave">${arm("M100 128 Q120 118 124 98")}${hand(125, 92)}</g>`,
+    celebrate: `<g class="cheer">${arm("M60 128 Q40 114 36 94")}${hand(35, 88)}</g><g class="cheer r">${arm("M100 128 Q120 114 124 94")}${hand(125, 88)}</g>`,
+    panic: `<g class="flail">${arm("M60 128 Q38 118 30 100")}${hand(28, 94)}</g><g class="flail r">${arm("M100 128 Q122 118 130 100")}${hand(132, 94)}</g>`,
+    thumbs: hipL + arm("M100 128 Q118 124 120 110") + hand(120, 106) + `<rect x="117" y="91" width="6" height="12" rx="3" fill="${Y}" stroke="${YE}" stroke-width="1.5"/>`,
+    thinking: downR + arm("M60 128 Q58 120 68 114") + hand(72, 112),
+    working: `<rect x="52" y="136" width="56" height="30" rx="4" fill="#d1d1d6" stroke="#aeaeb2" stroke-width="1.5"/>
+        <text x="80" y="156" text-anchor="middle" font-family="SF Mono, Menlo, monospace" font-size="11" font-weight="700" fill="#b38f00">&lt;/&gt;</text>
+        <rect x="46" y="165" width="68" height="5" rx="2.5" fill="#aeaeb2"/>
+        <g class="type">${arm("M60 128 Q50 150 58 160")}${hand(60, 162)}</g><g class="type r">${arm("M100 128 Q110 150 102 160")}${hand(100, 162)}</g>`,
+    shy: `<g class="peek">${arm("M60 128 Q40 104 52 84")}<ellipse cx="60" cy="72" rx="17" ry="14" fill="${Y}" stroke="${YE}" stroke-width="1.5"/></g>
+        ${arm("M100 128 Q120 104 108 84")}<ellipse cx="100" cy="72" rx="17" ry="14" fill="${Y}" stroke="${YE}" stroke-width="1.5"/>`,
+  }[mood] || downL + downR;
+
   const extra = {
-    worried: "",
-    alarmed: "",
-    sleep: `<text class="zz" x="104" y="26" font-size="15" font-weight="700" fill="#8e8e93">z</text><text class="zz" x="114" y="16" font-size="11" font-weight="700" fill="#8e8e93">z</text>`,
-    happy: "", shy: "",
-  }[mood];
-  return `<svg class="mascot ${mood}" width="${size}" height="${size}" viewBox="0 0 140 140" aria-hidden="true">
+    worried: `<path class="drop" d="M126 44 q-5 7 0 10 q5 -3 0 -10z" fill="#64d2ff" stroke="#fff"/>`,
+    panic: `<path class="drop" d="M128 40 q-5 7 0 10 q5 -3 0 -10z" fill="#64d2ff" stroke="#fff"/><path class="drop d2" d="M32 46 q-4 6 0 8 q4 -2 0 -8z" fill="#64d2ff" stroke="#fff"/>`,
+    sad: `<path class="tear" d="M104 92 q-3 5 0 7 q3 -2 0 -7z" fill="#64d2ff"/>`,
+    sleep: `<text class="zz" x="124" y="30" font-size="16" font-weight="800" fill="#8e8e93">z</text><text class="zz" x="134" y="18" font-size="12" font-weight="800" fill="#8e8e93">z</text>`,
+    thinking: `<g class="dots"><circle cx="126" cy="34" r="3" fill="#aeaeb2"/><circle cx="136" cy="25" r="4" fill="#aeaeb2"/><circle cx="148" cy="14" r="5.5" fill="#aeaeb2"/></g>`,
+    celebrate: `<g class="confetti">${[["#ff453a", 16, 0], ["#ffd60a", 46, .4], ["#30d158", 112, .2], ["#0a84ff", 142, .6], ["#bf5af2", 80, .9], ["#ff9f0a", 128, 1.2], ["#64d2ff", 30, 1.4]]
+      .map(([c, x, d]) => `<rect x="${x}" y="-6" width="5" height="8" rx="1.5" fill="${c}" style="animation-delay:${d}s"/>`).join("")}</g>`,
+  }[mood] || "";
+  const led = mood === "panic" ? "#ff453a" : mood === "sleep" ? "#8e8e93" : Y;
+
+  const w = Math.round(size * 160 / 190);
+  return `<svg class="mascot ${mood}" width="${w}" height="${size}" viewBox="0 0 160 190" aria-hidden="true">
     <defs>
-      <linearGradient id="${id}c" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#e3e3e8"/></linearGradient>
-      <linearGradient id="${id}m" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset=".5" stop-color="#d1d1d6"/><stop offset="1" stop-color="#aeaeb2"/></linearGradient>
-      <radialGradient id="${id}s" cx=".5" cy=".35" r=".8"><stop offset="0" stop-color="${g}" stop-opacity=".28"/><stop offset="1" stop-color="#0b1320" stop-opacity="0"/></radialGradient>
-      <clipPath id="${id}k"><rect x="38" y="40" width="64" height="44" rx="12"/></clipPath>
+      <radialGradient id="${id}h" cx=".38" cy=".3" r=".85"><stop offset="0" stop-color="#ffffff"/><stop offset=".7" stop-color="#e9e9ee"/><stop offset="1" stop-color="#c7c7cc"/></radialGradient>
+      <radialGradient id="${id}e" cx=".5" cy=".45" r=".6"><stop offset="0" stop-color="${glow[0]}"/><stop offset="1" stop-color="${glow[1]}"/></radialGradient>
+      <clipPath id="${id}c60"><ellipse cx="60" cy="72" rx="16" ry="18"/></clipPath><clipPath id="${id}c100"><ellipse cx="100" cy="72" rx="16" ry="18"/></clipPath>
     </defs>
-    <ellipse class="shadow" cx="70" cy="132" rx="34" ry="5" fill="#000" opacity=".13"/>
+    <ellipse class="shadow" cx="80" cy="184" rx="34" ry="5" fill="#000" opacity=".14"/>
+    ${extra}
     <g class="body">
-      ${extra}
-      <rect x="52" y="108" width="12" height="16" rx="5" fill="#8e8e93"/><rect x="76" y="108" width="12" height="16" rx="5" fill="#8e8e93"/>
-      <ellipse cx="57" cy="125" rx="10" ry="5" fill="#636366"/><ellipse cx="83" cy="125" rx="10" ry="5" fill="#636366"/>
-      <path d="M28 76 L18 92" stroke="#c7c7cc" stroke-width="6" stroke-linecap="round"/><circle cx="17" cy="95" r="6" fill="#f2f2f7" stroke="#c7c7cc" stroke-width="2"/>
-      ${arm}
-      <rect x="28" y="30" width="84" height="80" rx="22" fill="url(#${id}c)" stroke="#d1d1d6" stroke-width="1.5"/>
-      <path d="M34 36 q18 -4 36 -2" stroke="#fff" stroke-width="3" stroke-linecap="round" opacity=".9"/>
-      <path d="M30 32 Q70 16 110 32" stroke="#636366" stroke-width="3" fill="none" stroke-linecap="round"/>
-      <circle cx="44" cy="22" r="10" fill="url(#${id}m)" stroke="#aeaeb2" stroke-width="1.5"/><circle cx="44" cy="22" r="3" fill="#636366"/>
-      <path class="glint" d="M44 14 l1.6 4.4 l4.4 1.6 l-4.4 1.6 l-1.6 4.4 l-1.6 -4.4 l-4.4 -1.6 l4.4 -1.6z" fill="#fff"/>
-      <rect x="38" y="40" width="64" height="44" rx="12" fill="#0b1320"/>
-      <rect x="38" y="40" width="64" height="44" rx="12" fill="url(#${id}s)"/>
-      <g clip-path="url(#${id}k)">
-        <g class="eyes">${eyes}</g>${mouth}
-        <path class="ecgline" d="${beat(38)} ${beat(70)} ${beat(102)}" transform="translate(0 0)" stroke="${g}" stroke-width="1.6" fill="none" stroke-linejoin="round" opacity=".55"/>
-      </g>
-      <path d="M44 106 C44 128 96 128 96 106" stroke="#48484a" stroke-width="3" fill="none" stroke-linecap="round"/>
-      <circle cx="70" cy="122" r="6" fill="url(#${id}m)" stroke="#8e8e93" stroke-width="1.5"/>
-      <rect x="40" y="90" width="16" height="12" rx="3" fill="#fff" stroke="#d1d1d6"/><path d="M48 92.5 v7 M44.5 96 h7" stroke="#ff3b30" stroke-width="2.4" stroke-linecap="round"/>
-      ${mood === "worried" ? `<path class="sweat" d="M107 40 q-5 7 0 10 q5 -3 0 -10z" fill="#64d2ff" stroke="#fff" stroke-width="1"/>` : ""}
-      ${mood === "alarmed" ? `<path d="M62 22 a8 8 0 0 1 16 0 v4 h-16z" fill="#ff453a"/><rect x="59" y="25" width="22" height="4" rx="2" fill="#8e8e93"/>
-        <path class="siren" d="M56 12 l-6 -5 M84 12 l6 -5 M70 8 v-7" stroke="#ff453a" stroke-width="3" stroke-linecap="round"/>` : ""}
-      <circle class="led" cx="98" cy="96" r="3" fill="${mood === "sleep" ? "#8e8e93" : mood === "alarmed" ? "#ff453a" : "#30d158"}"/>
+      <rect x="64" y="152" width="11" height="20" rx="5" fill="${metal}"/><rect x="85" y="152" width="11" height="20" rx="5" fill="${metal}"/>
+      <path d="M56 180 q0 -10 14 -10 h6 v10z M104 180 q0 -10 -14 -10 h-6 v10z" fill="#f2f2f7" stroke="#c7c7cc"/>
+      <path d="M58 177 h16 M86 177 h16" stroke="${Y}" stroke-width="2.4" stroke-linecap="round"/>
+      <path d="M60 122 h40 q6 0 6 8 v18 q0 10 -12 10 h-28 q-12 0 -12 -10 v-18 q0 -8 6 -8z" fill="url(#${id}h)" stroke="#d1d1d6"/>
+      <rect x="67" y="129" width="26" height="17" rx="4" fill="#1c1c1e"/>
+      <text x="80" y="141.5" text-anchor="middle" font-family="SF Mono, Menlo, monospace" font-size="9" font-weight="700" fill="${Y}">&lt;/&gt;</text>
+      <rect x="74" y="114" width="12" height="10" rx="3" fill="${metal}"/>
+      <path class="ant" d="M80 30 L80 12" stroke="${metal}" stroke-width="4" stroke-linecap="round"/><circle class="led" cx="80" cy="9" r="5.5" fill="${led}" stroke="${YE}" stroke-width="1"/>
+      <ellipse cx="80" cy="30" rx="12" ry="4" fill="#d1d1d6"/>
+      <circle cx="26" cy="72" r="11" fill="#8e8e93"/><circle cx="26" cy="72" r="6" fill="#636366" stroke="${Y}" stroke-width="2"/>
+      <circle cx="134" cy="72" r="11" fill="#8e8e93"/><circle cx="134" cy="72" r="6" fill="#636366" stroke="${Y}" stroke-width="2"/>
+      <ellipse cx="80" cy="72" rx="56" ry="46" fill="url(#${id}h)" stroke="#d1d1d6" stroke-width="1.2"/>
+      <path d="M40 46 q20 -16 44 -14" stroke="#fff" stroke-width="4" stroke-linecap="round" opacity=".9" fill="none"/>
+      <path d="M130 80 Q128 104 100 110" stroke="${metal}" stroke-width="3" fill="none" stroke-linecap="round"/><circle cx="98" cy="110" r="4" fill="${Y}"/>
+      ${brows}${eyes}${blush}${mouth}
+      ${arms}
     </g></svg>`;
 }
-const CHECK = mascot("happy", 64);
+
 const VIEWS = { overview: "Overview", pods: "Pods", nodes: "Nodes", insights: "Insights", events: "Events & alerts" };
 const SPEAKER_ON = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 6v4h2.5l3.5 3V3L5 6z"/><path d="M11 5.5a3.5 3.5 0 0 1 0 5M12.8 3.5a6 6 0 0 1 0 9"/></svg>';
 const SPEAKER_OFF = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 6v4h2.5l3.5 3V3L5 6z"/><path d="M11 6l3.5 4M14.5 6L11 10"/></svg>';
@@ -1068,7 +1121,7 @@ function renderOverview(s) {
       <div style="min-width:0"><div class="t">${esc(p.name)}</div><div class="m">${esc(p.namespace)} · <span class="why ${muted ? "" : lvlClass(p.level)}" style="display:inline">${esc(muted ? `Recovered · ${p.attention}` : p.attention)}</span></div></div>
       <div class="r"><span class="muted" style="font-size:12px">${fmtAge(muted ? p.lastExitAge : p.stateAge)}</span>${data.aiEnabled ? `<button class="ask-mini" data-investigate="1" ${podAttrs(p.namespace, p.name)}>Diagnose</button>` : ""}</div>
     </div>`;
-  $("attention").innerHTML = (att.length ? att.map((p) => attRow(p, false)).join("") : `<div class="empty">${CHECK}<b>All clear</b>No pod needs attention right now.</div>`)
+  $("attention").innerHTML = (att.length ? att.map((p) => attRow(p, false)).join("") : `<div class="empty">${mascot("celebrate", 90)}<b>All clear</b>No pod needs attention right now.</div>`)
     + (recent.length ? `<div class="sec" style="padding:12px 10px 4px">Recently restarted, now healthy</div>${recent.map((p) => attRow(p, true)).join("")}` : "");
 
   $("warnList").innerHTML = warningsHtml((data.warnings || []).slice(0, 12));
@@ -1086,7 +1139,7 @@ function renderOverview(s) {
 
 function warningsHtml(list) {
   if (data.warnings == null) return '<div class="empty">Give the KubePulse service account read access to events to see warnings.</div>';
-  if (!list.length) return `<div class="empty">${CHECK}<b>No warnings</b>Kubernetes keeps events for about an hour.</div>`;
+  if (!list.length) return `<div class="empty">${mascot("cool", 90)}<b>No warnings</b>Kubernetes keeps events for about an hour.</div>`;
   return list.map((e) => {
     const inner = `<div class="ev-top"><b>${esc(e.reason)}</b><span>${fmtAge(e.age)} ago${e.count > 1 ? " · ×" + e.count : ""}</span></div>
       <div class="ev-obj">${esc(e.kind)} ${esc(e.namespace ? e.namespace + "/" : "")}${esc(e.name)}</div><div class="ev-msg">${esc(e.message)}</div>`;
@@ -1110,7 +1163,7 @@ function renderPods() {
       <td class="num">${fmtCpu(p.cpu) || '<span class="muted">–</span>'}</td>
       <td class="num">${fmtMem(p.mem) || '<span class="muted">–</span>'}</td>
       <td class="num muted">${fmtAge(p.age)}</td></tr>`).join("")
-    || `<tr><td colspan="7" class="empty">${onlyBad ? CHECK + "<b>All clear</b>No pod needs attention." : "No pods match this search."}</td></tr>`;
+    || `<tr><td colspan="7" class="empty">${onlyBad ? mascot("celebrate", 90) + "<b>All clear</b>No pod needs attention." : "No pods match this search."}</td></tr>`;
 }
 
 function renderNodes() {
@@ -1330,7 +1383,7 @@ function renderInsights() {
         <td class="num">${fmtCpu(r.cpuReq)} → ${fmtCpu(r.cpuUsed)}</td><td class="num">${fmtMem(r.memReq)} → ${fmtMem(r.memPeak)}</td>
         <td class="num save">${r.cpuWaste ? fmtCpu(r.cpuSuggest) + " CPU" : ""}${r.cpuWaste && r.memWaste ? " · " : ""}${r.memWaste ? fmtMem(r.memSuggest) : ""}</td></tr>`).join("")}</tbody></table></div>
       <div class="card-foot">Per pod. Based on CPU averaged and memory at its peak since KubePulse started, with 50% (CPU) and 30% (memory) headroom.</div>`
-    : `<div class="empty">${CHECK}<b>Nothing oversized</b>Requests look close to real usage. This needs about 5 minutes of data after KubePulse starts.</div>`;
+    : `<div class="empty">${mascot("thumbs", 90)}<b>Nothing oversized</b>Requests look close to real usage. This needs about 5 minutes of data after KubePulse starts.</div>`;
 
   // Recent changes: pods created in the last hour, grouped by workload
   const groups = new Map();
@@ -1353,7 +1406,7 @@ function renderInsights() {
   $("churn").innerHTML = churn.length ? `<table class="mini-table"><thead><tr><th>Workload</th><th class="num">Replicas</th><th class="num">Pods created in 24h</th><th class="num">Typical lifespan</th></tr></thead><tbody>
     ${churn.map((r) => `<tr><td><b>${esc(ownerName(r.owner))}</b><small>${esc(r.namespace)} · ${esc(ownerKind(r.owner))}</small></td><td class="num">${r.replicas}</td>
       <td class="num hot">${r.created24h}</td><td class="num">${r.medianLife != null ? fmtAge(r.medianLife) : "–"}</td></tr>`).join("")}</tbody></table>`
-    : `<div class="empty">${CHECK}<b>No churn</b>No workload is replacing its pods unusually often.</div>`;
+    : `<div class="empty">${mascot("cool", 90)}<b>No churn</b>No workload is replacing its pods unusually often.</div>`;
 
   // Certificates
   const certs = data.certs;
@@ -1456,7 +1509,7 @@ function renderWall(s) {
       <div style="min-width:0"><b>${esc(i.title)}</b><div class="why">${esc(i.why)}</div><div class="where">${esc(i.where)}</div></div>
       <span class="age">${i.age != null ? fmtAge(i.age) : ""}</span></div>`).join("")
       + (inc.length > shown ? `<div class="muted" style="text-align:center;font-size:15px;padding-top:6px">+ ${inc.length - shown} more</div>` : "")
-    : `<div class="allclear"><div>${mascot("happy", 150)}<b>All clear</b>No incidents right now</div></div>`;
+    : `<div class="allclear"><div>${mascot("celebrate", 170)}<b>All clear</b>No incidents right now</div></div>`;
 
   const h = data.history || {}, c = data.cluster;
   const trend = (label, val, series, opts) => `<div class="trend"><div class="l"><span>${label}</span><b>${val}</b></div>${spark(series, opts)}</div>`;
@@ -1799,8 +1852,8 @@ function renderAi() {
     return;
   }
   if (!j) {
-    $("dBody").innerHTML = `<div class="inv-intro">${mascot("happy", 84)}<h3>Let Doc take a look</h3>
-      <p>Doc follows the evidence across the cluster like an on-call engineer, read-only, then tells you what's wrong and what to change.</p>
+    $("dBody").innerHTML = `<div class="inv-intro">${mascot("thinking", 110)}<h3>Let Kubi take a look</h3>
+      <p>Kubi follows the evidence across the cluster like an on-call engineer, read-only, then tells you what's wrong and what to change.</p>
       <div class="chips"><span class="chip">Container logs</span><span class="chip">Crashed-run logs</span><span class="chip">Deployment &amp; rollouts</span><span class="chip">Sibling replicas</span>
         <span class="chip">Node pressure</span><span class="chip">Services &amp; endpoints</span><span class="chip">ConfigMaps &amp; volumes</span></div>
       <button class="btn primary" id="aiRun">Diagnose</button>
@@ -1809,12 +1862,12 @@ function renderAi() {
   }
   if (j.error && !j.steps?.length) { $("dBody").innerHTML = `<div class="callout bad-c"><b>Investigation failed</b><p>${esc(j.error)}</p></div><button class="btn" id="aiRerun">Try again</button>`; return; }
   if (j.status === "running" || j.status === "starting") {
-    $("dBody").innerHTML = `<div class="loading" style="padding:4px 0 0"><span class="spin"></span><b>Investigating ${esc(drawer.name)}</b><span class="muted">· ${j.seconds || 0}s</span></div>
+    $("dBody").innerHTML = `<div style="text-align:center">${mascot("working", 110)}</div><div class="loading" style="padding:4px 0 0"><span class="spin"></span><b>Investigating ${esc(drawer.name)}</b><span class="muted">· ${j.seconds || 0}s</span></div>
       <div class="steps">${stepsHtml(j.steps || [], true)}</div>`;
     return;
   }
   if (j.status === "error") {
-    $("dBody").innerHTML = `<div class="callout bad-c"><b>Investigation failed</b><p>${esc(j.error)}</p></div><div class="steps">${stepsHtml(j.steps, false)}</div><button class="btn" id="aiRerun">Try again</button>`;
+    $("dBody").innerHTML = `<div style="text-align:center">${mascot("sad", 100)}</div><div class="callout bad-c"><b>Investigation failed</b><p>${esc(j.error)}</p></div><div class="steps">${stepsHtml(j.steps, false)}</div><button class="btn" id="aiRerun">Try again</button>`;
     return;
   }
   $("dBody").innerHTML = `<div class="report">${md(j.answer)}</div>
@@ -1950,10 +2003,15 @@ $("theme").addEventListener("click", () => {
 
 // ---------- Sign in ----------
 
-function setDoc(mood) {
-  if ($("loginMascot").dataset.mood === mood) return;
-  $("loginMascot").dataset.mood = mood;
-  $("loginMascot").innerHTML = mascot(mood, 250);
+function setDoc(mood, say) {
+  if ($("loginMascot").dataset.mood !== mood) {
+    $("loginMascot").dataset.mood = mood;
+    $("loginMascot").innerHTML = mascot(mood, 300);
+  }
+  if (say && $("loginBubble").textContent !== say) {
+    $("loginBubble").textContent = say;
+    $("loginBubble").classList.remove("pop"); void $("loginBubble").offsetWidth; $("loginBubble").classList.add("pop");
+  }
 }
 function showLogin() {
   if (!$("login").hidden) return;
@@ -1961,73 +2019,22 @@ function showLogin() {
   document.body.classList.add("signed-out");
   $("login").hidden = false;
   $("login").classList.remove("out");
-  setDoc("happy");
+  setDoc("wave", "Hi! I'm Kubi, your on-call buddy 👋");
   $("wallLink").href = BASE + "wall";
-  startLoginFx();
-  setTimeout(() => $("lu").focus(), 700);
+  // Code chips, rings and dots drifting up behind everything
+  $("loginBg").innerHTML = Array.from({ length: 18 }, (_, i) => {
+    const kind = ["p", "x", "d"][i % 3];
+    return `<i class="${kind}" style="left:${(i * 53) % 100}%;animation-duration:${14 + (i * 7) % 12}s;animation-delay:-${(i * 3.1) % 14}s;--r:${i % 2 ? 200 : -160}deg"></i>`;
+  }).join("");
+  setTimeout(() => $("lu").focus(), 600);
 }
-// Doc covers his eyes while you type the password
-$("lp").addEventListener("focus", () => setDoc("shy"));
-$("lp").addEventListener("input", () => setDoc("shy"));
-$("lu").addEventListener("input", () => setDoc("happy"));
+// Kubi covers his eyes while you type the password
+$("lp").addEventListener("focus", () => setDoc("shy", "I'm not looking! 🙈"));
+$("lp").addEventListener("input", () => setDoc("shy", "I'm not looking! 🙈"));
 $("lp").addEventListener("blur", () => setDoc("happy"));
-$("lu").addEventListener("focus", () => setDoc("happy"));
+$("lu").addEventListener("focus", () => setDoc("happy", $("lu").value ? `Nice to see you, ${$("lu").value}!` : "Who's on call today?"));
+$("lu").addEventListener("input", () => setDoc("happy", $("lu").value ? `Nice to see you, ${$("lu").value}!` : "Who's on call today?"));
 
-// Behind the card: a drifting network of nodes (IT) and a heartbeat sweeping across (healthcare)
-const loginFx = { raf: 0 };
-function ecgShape(u) {   // one heartbeat, u from 0 to 1
-  if (u < .10) return 0;
-  if (u < .16) return Math.sin((u - .10) / .06 * Math.PI) * .12;
-  if (u < .20) return 0;
-  if (u < .22) return -(u - .20) / .02 * .18;
-  if (u < .25) return -.18 + (u - .22) / .03 * 1.18;
-  if (u < .28) return 1 - (u - .25) / .03 * 1.35;
-  if (u < .30) return -.35 + (u - .28) / .02 * .35;
-  if (u < .42) return 0;
-  if (u < .56) return Math.sin((u - .42) / .14 * Math.PI) * .22;
-  return 0;
-}
-function startLoginFx() {
-  if (matchMedia("(prefers-reduced-motion: reduce)").matches || loginFx.raf) return;
-  const c = $("loginFx"), ctx = c.getContext("2d"), dpr = Math.min(2, devicePixelRatio || 1);
-  let W, H, pts;
-  loginFx.resize = () => {
-    W = c.width = innerWidth * dpr; H = c.height = innerHeight * dpr;
-    pts = Array.from({ length: Math.round(innerWidth * innerHeight / 20000) }, () => ({
-      x: Math.random() * W, y: Math.random() * H, vx: (Math.random() - .5) * .3 * dpr, vy: (Math.random() - .5) * .3 * dpr, r: (Math.random() * 1.5 + .6) * dpr }));
-  };
-  loginFx.resize();
-  addEventListener("resize", loginFx.resize);
-  const t0 = performance.now(), link = 130 * dpr;
-  const frame = (now) => {
-    ctx.clearRect(0, 0, W, H);
-    for (const p of pts) {
-      p.x = (p.x + p.vx + W) % W; p.y = (p.y + p.vy + H) % H;
-      ctx.fillStyle = "rgba(100, 210, 255, .55)"; ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 7); ctx.fill();
-    }
-    ctx.lineWidth = dpr;
-    for (let i = 0; i < pts.length; i++) for (let j = i + 1; j < pts.length; j++) {
-      const a = pts[i], b = pts[j], d = Math.hypot(a.x - b.x, a.y - b.y);
-      if (d < link) { ctx.strokeStyle = `rgba(100, 210, 255, ${(1 - d / link) * .16})`; ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); }
-    }
-    // The heartbeat: a glowing trace whose head sweeps left to right, fading behind it
-    const period = 5600, head = ((now - t0) % period) / period * W * 1.25, tail = W * .5, base = H * .64, amp = H * .09, beatW = W / 4.5;
-    ctx.save(); ctx.lineJoin = "round"; ctx.lineCap = "round"; ctx.lineWidth = 2.4 * dpr; ctx.shadowColor = "#30d158"; ctx.shadowBlur = 16 * dpr;
-    for (let x = Math.max(0, head - tail); x < Math.min(W, head); x += 3 * dpr) {
-      const x2 = x + 3 * dpr, alpha = Math.max(0, 1 - (head - x) / tail);
-      ctx.strokeStyle = `rgba(48, 209, 88, ${alpha * .85})`;
-      ctx.beginPath(); ctx.moveTo(x, base - ecgShape((x / beatW) % 1) * amp); ctx.lineTo(x2, base - ecgShape((x2 / beatW) % 1) * amp); ctx.stroke();
-    }
-    if (head < W) { ctx.fillStyle = "#b8ffc9"; ctx.beginPath(); ctx.arc(head, base - ecgShape((head / beatW) % 1) * amp, 3.5 * dpr, 0, 7); ctx.fill(); }
-    ctx.restore();
-    loginFx.raf = requestAnimationFrame(frame);
-  };
-  loginFx.raf = requestAnimationFrame(frame);
-}
-function stopLoginFx() {
-  cancelAnimationFrame(loginFx.raf); loginFx.raf = 0;
-  if (loginFx.resize) removeEventListener("resize", loginFx.resize);
-}
 function setUser(user, auth) {
   $("userChip").hidden = !auth || !user;
   $("userName").textContent = user || "";
@@ -2036,27 +2043,27 @@ function setUser(user, auth) {
 $("loginForm").addEventListener("submit", async (e) => {
   e.preventDefault();
   $("loginBtn").disabled = true; $("loginBtn").classList.add("busy"); $("loginErr").textContent = "";
+  setDoc("thinking", "Checking your access… 🔐");
   try {
     const me = await getJSON(API + "login", { method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ user: $("lu").value.trim(), password: $("lp").value }) });
-    // Doc jumps for joy, the card lifts away and the dashboard fades in
-    $("lp").blur(); setDoc("happy");
+    // Kubi celebrates, the card lifts away and the dashboard fades in
+    $("lp").blur(); setDoc("celebrate", "Welcome back! Let's check on your cluster 🎉");
     $("loginDoc").classList.remove("jump"); void $("loginDoc").offsetWidth; $("loginDoc").classList.add("jump");
     $("login").classList.add("out");
     setUser(me.user, true);
     setTimeout(() => {
-      $("login").hidden = true; stopLoginFx();
+      $("login").hidden = true; $("loginBg").innerHTML = "";
       document.body.classList.remove("signed-out"); document.body.classList.add("app-in");
       $("lp").value = "";
       start();
       setTimeout(() => document.body.classList.remove("app-in"), 1200);
-    }, 900);
+    }, 1300);
   } catch (err) {
     $("loginErr").textContent = err.message;
-    setDoc("worried");
+    setDoc("sad", /too many/i.test(err.message) ? "Too many tries. Let's take a short break ⏳" : "Hmm, that didn't work. Try again?");
     const card = $("loginForm");
     card.classList.remove("shake"); void card.offsetWidth; card.classList.add("shake");
-    setTimeout(() => { if (document.activeElement !== $("lp")) setDoc("happy"); }, 2600);
   }
   $("loginBtn").disabled = false; $("loginBtn").classList.remove("busy");
 });
