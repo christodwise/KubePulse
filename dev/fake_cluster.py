@@ -205,6 +205,13 @@ class Model(BaseHTTPRequestHandler):
     def do_POST(self):
         body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
         tool_messages = sum(1 for m in body["messages"] if m["role"] == "tool")
+        if "tools" not in body:   # the short analysis sent with a CrashLoopBackOff alert
+            reply = ("**Cause:** The container runs out of Java heap while warming its settlement cache and is OOMKilled.\n"
+                     "**Evidence:** `java.lang.OutOfMemoryError: Java heap space` after heap reached 249Mi / 256Mi.\n"
+                     "**Fix:** Raise the memory limit of container `app` in Deployment `payments-api` from 256Mi to 768Mi.")
+            data = json.dumps({"model": "fake-model", "choices": [{"message": {"role": "assistant", "content": reply}}]}).encode()
+            self.send_response(200); self.send_header("Content-Type", "application/json"); self.send_header("Content-Length", str(len(data))); self.end_headers()
+            return self.wfile.write(data)
         call = lambda i, name, args: {"id": f"call_{i}", "type": "function", "function": {"name": name, "arguments": json.dumps(args)}}
         pod_name = "payments-api-7d9f8c6b5-x2k4p"
         if tool_messages == 0:

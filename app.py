@@ -44,6 +44,9 @@ OPENAI_API_KEY = env("OPENAI_API_KEY", "").strip()
 OPENAI_MODEL = env("OPENAI_MODEL", "gpt-4o-mini")
 OPENAI_BASE_URL = env("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/")
 AI_MAX_STEPS = int(env("AI_MAX_STEPS", "8"))
+# A short AI analysis posted after the Mattermost alert when a pod goes into CrashLoopBackOff
+AI_ALERTS = env("AI_ALERTS", "true").lower() == "true"
+AI_ALERTS_PER_HOUR = int(env("AI_ALERTS_PER_HOUR", "10"))
 
 # Optional Mattermost alerts
 MATTERMOST_WEBHOOK_URL = env("MATTERMOST_WEBHOOK_URL", "").strip()
@@ -1221,6 +1224,35 @@ def investigate(job):
     job["finished"] = time.time()
 
 
+QUICK_PROMPT = """You are a senior Kubernetes SRE. A pod is in CrashLoopBackOff. From the pod summary, events and
+the logs of the run that crashed, reply in exactly this Markdown, at most 3 short lines, no preamble:
+**Cause:** the most likely reason, in one sentence.
+**Evidence:** one quoted log line or event, shortened if needed.
+**Fix:** the specific change to make, in one sentence.
+If the data isn't enough, say what's missing in the Cause line."""
+
+
+def quick_crash_analysis(ns, name):
+    """One AI call over the crashed-run logs and events: a few lines for the alert channel."""
+    detail, _ = tool_get_pod(ns, name)
+    logs = {}
+    for c in detail["containers"]:
+        if c["restarts"] or not c["ready"]:
+            for previous in (True, False):
+                try:
+                    logs[c["name"] + (" (crashed run)" if previous else "")] = pod_logs(ns, name, c["name"], previous, 80)[-4000:]
+                    break
+                except Exception:
+                    continue
+    context = {k: detail[k] for k in ("namespace", "name", "status", "owner", "node", "usage")}
+    context["containers"] = [{k: c[k] for k in ("name", "image", "restarts", "state", "last", "limits", "requests")} for c in detail["containers"]]
+    context["events"] = (detail["events"] or [])[:8]
+    context["logs"] = logs
+    out = openai_chat([{"role": "system", "content": QUICK_PROMPT},
+                       {"role": "user", "content": redact(json.dumps(context, indent=1))[:12000]}], max_tokens=220)
+    return (out["choices"][0]["message"].get("content") or "").strip()
+
+
 def job_view(job):
     return {k: job[k] for k in ("id", "status", "steps", "answer", "error", "model")} | {
         "at": datetime.fromtimestamp(job["finished"] or job["created"], timezone.utc).isoformat(),
@@ -1339,6 +1371,9 @@ class Alerter:
             n = len(new)
             bad = sum(1 for a in new if a["level"] == "bad")
             self.send(f"#### 🚨 {self._prefix()}Heads up! {n} new problem{'s' if n != 1 else ''} {'🔥' * min(3, max(1, bad))}", new)
+            for a in new:
+                if a["kind"] == "pod" and a["reason"].startswith("CrashLoopBackOff"):
+                    self.analyse_later(a)
         done = [v for _, v in resolved if v["notified"]]
         if done and ALERT_RESOLVED:
             lines = [f"💚 **{v['title']}** was {v['reason'].split(' for ')[0]} for {fmt_age(int(now - v['since']))}" for v in done[:15]]
@@ -1349,6 +1384,37 @@ class Alerter:
 
     def _prefix(self):
         return f"[{CLUSTER_NAME}] " if CLUSTER_NAME else ""
+
+    def analyse_later(self, a):
+        """Post a short AI analysis for a crash-looping pod, in the background, within the hourly budget."""
+        if not (AI_ALERTS and OPENAI_API_KEY):
+            return
+        now = time.time()
+        self.ai_times = [t for t in getattr(self, "ai_times", []) if now - t < 3600]
+        if len(self.ai_times) >= AI_ALERTS_PER_HOUR:
+            return
+        self.ai_times.append(now)
+
+        def run():
+            try:
+                text = quick_crash_analysis(a["ns"], a["name"])
+            except Exception as e:
+                print(f"AI alert analysis failed for {a['title']}: {api_error(e)[1]}", flush=True)
+                return
+            if not text:
+                return
+            att = {"color": "#bf5af2", "fallback": f"AI analysis for {a['title']}", "title": f"🤖 AI analysis · {a['title']}", "text": text,
+                   "footer": "💜 KubePulse · AI can be wrong, check before changing production"}
+            if DASHBOARD_URL:
+                att["title_link"] = f"{DASHBOARD_URL}/#pod/{a['ns']}/{a['name']}"
+                att["text"] += f"\n[Full diagnosis in KubePulse →]({DASHBOARD_URL}/#pod/{a['ns']}/{a['name']})"
+            body = {"username": "KubePulse", "text": "", "attachments": [att]}
+            try:
+                post_json(MATTERMOST_WEBHOOK_URL, body)
+            except Exception as e:
+                print(f"mattermost AI analysis failed: {api_error(e)[1]}", flush=True)
+
+        threading.Thread(target=run, daemon=True).start()
 
     def _attachment(self, a):
         att = {

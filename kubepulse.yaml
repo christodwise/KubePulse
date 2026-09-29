@@ -90,7 +90,7 @@ spec:
         seccompProfile: { type: RuntimeDefault }
       containers:
         - name: kubepulse
-          image: christoj/kubepulse:0.8.1
+          image: christoj/kubepulse:0.8.2
           ports: [{ containerPort: 8080 }]
           envFrom:
             - secretRef: { name: kubepulse-secrets, optional: true }
@@ -109,6 +109,10 @@ spec:
               value: "20"
             - name: OPENAI_MODEL
               value: "gpt-4o-mini"
+            - name: AI_ALERTS             # short AI analysis after CrashLoopBackOff alerts (needs OPENAI_API_KEY)
+              value: "true"
+            - name: AI_ALERTS_PER_HOUR    # budget, so a big outage can't run up the AI bill
+              value: "10"
             - name: ALERT_PENDING_MINUTES   # alert on pods pending / not ready this long
               value: "3"
             - name: ALERT_COOLDOWN_MINUTES  # don't re-alert a flapping problem within this window

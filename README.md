@@ -36,7 +36,7 @@ Kubernetes. The screenshots use demo data.
   recent changes, short-lived pods, cert-manager certificate expiry, and **volumes with the space actually used** (from Prometheus)
 
 **Get told when something breaks**
-- **Mattermost alerts** for failing pods, pods stuck pending or not ready, OOM kills, nodes going NotReady, certificates about to expire, volumes filling up, and recoveries. Each problem alerts once; flapping problems are held back. Every kind of problem has its own emoji (🧠 out of memory, 🔁 crash loop, 📦 image pull, ⏳ pending, 🖥️ node, 🔐 certificate, 💾 volume), and recoveries arrive as ✅ All clear 🎉
+- **Mattermost alerts** for failing pods, pods stuck pending or not ready, OOM kills, nodes going NotReady, certificates about to expire, volumes filling up, and recoveries. Each problem alerts once; flapping problems are held back. Every kind of problem has its own emoji (🧠 out of memory, 🔁 crash loop, 📦 image pull, ⏳ pending, 🖥️ node, 🔐 certificate, 💾 volume), and recoveries arrive as ✅ All clear 🎉. When a pod goes into **CrashLoopBackOff**, a short 🤖 **AI analysis** follows the alert: the likely cause, the log line that shows it, and the fix
 - **Wallboard / NOC mode** for an office TV at `/wall`: big status with Kubi, a heartbeat line, the map and a 24-hour view that rotate, active incidents, and the whole screen turns red when something is critical. If the data goes stale, the board greys out behind a clear warning instead of showing old numbers as live
 - Optional **sound**: a monitor beep when a pod starts failing, a flatline when a node goes down, a chime when everything recovers. Browsers only allow audio after a click, so after a reload the wallboard shows *Tap to enable sound*
 
@@ -105,6 +105,8 @@ Set these in the Deployment in `kubepulse.yaml`. Every setting is optional.
 | `OPENAI_MODEL` | `gpt-4o-mini` | Model used for diagnosis |
 | `OPENAI_BASE_URL` | OpenAI | Any OpenAI-compatible chat completions API |
 | `AI_MAX_STEPS` | `8` | Maximum tool-calling rounds per diagnosis |
+| `AI_ALERTS` | `true` | Post a short AI analysis after CrashLoopBackOff alerts (needs `OPENAI_API_KEY`) |
+| `AI_ALERTS_PER_HOUR` | `10` | Most AI analyses sent per hour, so a big outage can't run up the bill |
 
 Secrets go in the `kubepulse-secrets` Secret:
 
