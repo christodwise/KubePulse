@@ -41,7 +41,7 @@ Kubernetes. The screenshots use demo data.
 - Optional **sound**: a monitor beep when a pod starts failing, a flatline when a node goes down, a chime when everything recovers. Browsers only allow audio after a click, so after a reload the wallboard shows *Tap to enable sound*
 
 **Signed in, except the TV**
-- A sign-in page protects everything: pods, logs, events and diagnosis. The **wallboard at `/wall` stays public**, so an office TV can show it without anyone signing in, and it only receives what it displays
+- A sign-in page protects everything: pods, logs, events and diagnosis. It's a small show of its own: a drifting network and a live heartbeat behind a glass card, and Doc, who waves while you type your name, covers his eyes while you type your password, sweats when it's wrong and jumps for joy when you're in. The **wallboard at `/wall` stays public**, so an office TV can show it without anyone signing in, and it only receives what it displays
 
 **Keyboard**: `/` search · `p` problems only · `t` theme · `f` wallboard · `s` sound · `1`–`5` pages · `?` help
 

@@ -38,9 +38,11 @@ const shot = async (name, full) => {
 };
 
 await send("Runtime.enable");
-await theme("light"); await size(1440, 1000);
-await send("Page.navigate", { url: URL + "/" }); await sleep(1500);
+// The sign-in screen with its animations running (heartbeat and network), then everything else still
+await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: "light" }] }); await size(1440, 900);
+await send("Page.navigate", { url: URL + "/" }); await sleep(3400);
 await shot("login");
+await theme("light"); await size(1440, 1000);
 await js(`$("lu").value = "admin"; $("lp").value = "${process.env.KP_PASSWORD || "demo"}"; $("loginForm").requestSubmit()`); await sleep(2500);
 await shot("overview", true);
 await js(`setView("insights")`); await sleep(800); await shot("insights", true);
