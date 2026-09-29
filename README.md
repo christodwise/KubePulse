@@ -41,7 +41,7 @@ Kubernetes. The screenshots use demo data.
 - Optional **sound**: a monitor beep when a pod starts failing, a flatline when a node goes down, a chime when everything recovers. Browsers only allow audio after a click, so after a reload the wallboard shows *Tap to enable sound*
 
 **Signed in, except the TV**
-- A sign-in page protects everything: pods, logs, events and diagnosis. It opens on Kubi's night-shift operations room: live graphs and logs on his monitors, a blinking server rack, the city at night outside the window. Kubi greets you, covers his eyes while you type your password, looks sad when it's wrong and celebrates when you're in.
+- A sign-in page protects everything: pods, logs, events and diagnosis. It's a single clean card with Kubi peeking over the top: he greets you, covers his eyes while you type your password, looks sad when it's wrong and celebrates when you're in.
 
 **Keyboard**: `/` search · `p` problems only · `t` theme · `f` wallboard · `s` sound · `1`–`5` pages · `?` help
 
