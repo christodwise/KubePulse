@@ -7,11 +7,14 @@ One background thread polls the cluster every POLL_SECONDS and keeps the result
 in memory, so browsers never cause Kubernetes API calls for the dashboard view.
 The same loop keeps a few hours of trend history and sends Mattermost alerts.
 """
+import base64
 import gzip
 import hashlib
+import hmac
 import json
 import os
 import re
+import secrets
 import ssl
 import threading
 import time
@@ -57,6 +60,12 @@ DATA_DIR = Path(env("DATA_DIR", "/data"))
 PVC_STATS = env("PVC_STATS", "false").lower() == "true"
 # Volume usage comes from Prometheus (kubelet_volume_stats_*). Empty = find it in the cluster automatically.
 PROMETHEUS_URL = env("PROMETHEUS_URL", "").strip().rstrip("/")
+
+# Login. KUBEPULSE_USERS="admin:password,ops:another". Empty = a random admin password, printed once in the log.
+AUTH_ENABLED = env("AUTH", "on").lower() not in ("off", "false", "0")
+WALLBOARD_PUBLIC = env("WALLBOARD_PUBLIC", "true").lower() == "true"   # /wall works without signing in
+SESSION_HOURS = float(env("SESSION_HOURS", "12") or 12)
+SESSION_SECRET = (env("SESSION_SECRET", "") or secrets.token_hex(32)).encode()   # random = sessions end on restart
 
 
 
@@ -1387,17 +1396,36 @@ ALERTS = Alerter()
 
 # ---------- Background poller and snapshot store ----------
 
+WALL_POD_FIELDS = ("namespace", "name", "node", "status", "level", "kind", "attention", "stateAge",
+                   "restarts", "lastReason", "lastExitAge", "cpu", "mem", "cpuReq", "memLimit", "owner")
+
+
+def wallboard_view(snap):
+    """Only what the wallboard shows: no logs, events, pod specs, certificates or alert settings."""
+    return {
+        **{k: snap.get(k) for k in ("generatedAt", "pollSeconds", "clusterName", "metricsAvailable", "cluster", "error", "history")},
+        "nodes": snap["nodes"],
+        "pods": [{k: p.get(k) for k in WALL_POD_FIELDS} for p in snap["pods"]],
+        "insights": {"timeline": (snap.get("insights") or {}).get("timeline")},
+        "public": True,
+    }
+
+
+def encode(obj):
+    body = json.dumps(obj, separators=(",", ":")).encode()
+    return {"body": body, "gz": gzip.compress(body, 6), "etag": '"' + hashlib.sha1(body).hexdigest()[:20] + '"'}
+
+
 class Store:
     def __init__(self):
         self.lock = threading.Lock()
-        self.snap = self.body = self.gz = self.etag = self.error = None
+        self.snap = self.error = None
+        self.full = self.wall = None
 
     def publish(self, snap):
-        body = json.dumps(snap, separators=(",", ":")).encode()
-        gz = gzip.compress(body, 6)
+        full, wall = encode(snap), encode(wallboard_view(snap))
         with self.lock:
-            self.snap, self.body, self.gz = snap, body, gz
-            self.etag = '"' + hashlib.sha1(body).hexdigest()[:20] + '"'
+            self.snap, self.full, self.wall = snap, full, wall
 
 
 STORE = Store()
@@ -1423,7 +1451,54 @@ def poll_loop():
         time.sleep(max(1.0, POLL_SECONDS - (time.time() - started)))
 
 
+# ---------- Login ----------
+
+def load_users():
+    users = {}
+    for entry in env("KUBEPULSE_USERS", "").split(","):
+        name, sep, password = entry.strip().partition(":")
+        if sep and name and password:
+            users[name.strip()] = password
+    return users
+
+
+USERS = load_users()
+GENERATED_PASSWORD = None
+if AUTH_ENABLED and not USERS:
+    GENERATED_PASSWORD = secrets.token_urlsafe(12)
+    USERS = {"admin": GENERATED_PASSWORD}
+
+FAILED_LOGINS = {}   # client -> [failure times], to slow down password guessing
+FAILED_LOCK = threading.Lock()
+
+
+def make_session(user):
+    payload = base64.urlsafe_b64encode(json.dumps({"u": user, "exp": int(time.time() + SESSION_HOURS * 3600)}).encode()).decode()
+    return payload + "." + hmac.new(SESSION_SECRET, payload.encode(), hashlib.sha256).hexdigest()
+
+
+def read_session(token):
+    """The signed-in user, or None."""
+    payload, _, sig = (token or "").partition(".")
+    if not payload or not hmac.compare_digest(sig, hmac.new(SESSION_SECRET, payload.encode(), hashlib.sha256).hexdigest()):
+        return None
+    try:
+        data = json.loads(base64.urlsafe_b64decode(payload.encode()))
+    except ValueError:
+        return None
+    return data["u"] if data.get("exp", 0) > time.time() and data.get("u") in USERS else None
+
+
+def check_password(user, password):
+    expected = USERS.get(user)
+    # Compare even for unknown users, so timing doesn't reveal which usernames exist
+    ok = hmac.compare_digest((password or "").encode(), (expected or secrets.token_hex(16)).encode())
+    return ok and expected is not None
+
+
 # ---------- HTTP ----------
+
+PUBLIC_PATHS = {"/", "/index.html", "/wall", "/healthz", "/api/login", "/api/logout", "/api/me"}
 
 class Handler(BaseHTTPRequestHandler):
     def _send(self, code, body, ctype, headers=None):
@@ -1446,9 +1521,63 @@ class Handler(BaseHTTPRequestHandler):
             code, msg = api_error(e)
             self._send(code, json.dumps({"error": msg}).encode(), "application/json")
 
-    def _snapshot(self):
+    def _client(self):
+        return (self.headers.get("X-Forwarded-For") or self.client_address[0]).split(",")[0].strip()
+
+    def _cookie(self, name):
+        for part in (self.headers.get("Cookie") or "").split(";"):
+            k, _, v = part.strip().partition("=")
+            if k == name:
+                return v
+        return None
+
+    def _user(self):
+        return read_session(self._cookie("kp_session")) if AUTH_ENABLED else "anonymous"
+
+    def _session_cookie(self, value, max_age):
+        secure = "; Secure" if (self.headers.get("X-Forwarded-Proto") or "").startswith("https") else ""
+        return f"kp_session={value}; Path=/; HttpOnly; SameSite=Lax; Max-Age={max_age}{secure}"
+
+    def _allowed(self, path):
+        """Everything needs a signed-in user, except the page itself, the login endpoints and the public wallboard."""
+        if path in PUBLIC_PATHS or (path == "/api/wallboard" and WALLBOARD_PUBLIC):
+            return True
+        if self._user():
+            return True
+        self._send(401, json.dumps({"error": "Please sign in"}).encode(), "application/json")
+        return False
+
+    def _json_body(self):
+        length = min(int(self.headers.get("Content-Length") or 0), 10000)
+        try:
+            return json.loads(self.rfile.read(length) or b"{}")
+        except ValueError:
+            return {}
+
+    def _login(self):
+        client, now = self._client(), time.time()
+        with FAILED_LOCK:
+            recent = [t for t in FAILED_LOGINS.get(client, []) if now - t < 600]
+            FAILED_LOGINS[client] = recent
+        if len(recent) >= 10:
+            return self._send(429, json.dumps({"error": "Too many attempts. Try again in a few minutes."}).encode(), "application/json")
+        data = self._json_body()
+        user = str(data.get("user", "")).strip()
+        if not AUTH_ENABLED or check_password(user, str(data.get("password", ""))):
+            with FAILED_LOCK:
+                FAILED_LOGINS.pop(client, None)
+            print(f"sign-in: {user} from {client}", flush=True)
+            return self._send(200, json.dumps({"user": user}).encode(), "application/json",
+                              {"Set-Cookie": self._session_cookie(make_session(user), int(SESSION_HOURS * 3600))})
+        with FAILED_LOCK:
+            FAILED_LOGINS.setdefault(client, []).append(now)
+        time.sleep(0.5)
+        self._send(401, json.dumps({"error": "Wrong username or password"}).encode(), "application/json")
+
+    def _snapshot(self, wall=False):
         with STORE.lock:
-            body, gz, etag = STORE.body, STORE.gz, STORE.etag
+            enc = STORE.wall if wall else STORE.full
+        body, gz, etag = (enc["body"], enc["gz"], enc["etag"]) if enc else (None, None, None)
         if body is None:
             msg = STORE.error or "KubePulse is starting up"
             return self._send(503, json.dumps({"error": msg}).encode(), "application/json")
@@ -1466,13 +1595,20 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         url = urlparse(self.path)
         q = {k: v[0] for k, v in parse_qs(url.query).items()}
-        if url.path in ("/", "/index.html"):
+        if not self._allowed(url.path):
+            return
+        if url.path in ("/", "/index.html", "/wall"):
             if self._gzip_ok():
                 self._send(200, INDEX_GZ, "text/html; charset=utf-8", {"Content-Encoding": "gzip", "Vary": "Accept-Encoding"})
             else:
                 self._send(200, INDEX_HTML, "text/html; charset=utf-8")
         elif url.path == "/api/snapshot":
             self._snapshot()
+        elif url.path == "/api/wallboard":
+            self._snapshot(wall=True)
+        elif url.path == "/api/me":
+            user = self._user()
+            self._send(200 if user else 401, json.dumps({"user": user, "auth": AUTH_ENABLED, "wallPublic": WALLBOARD_PUBLIC}).encode(), "application/json")
         elif url.path == "/api/pod":
             self._api(lambda: json.dumps(pod_detail(check_ns(q.get("ns")), check_name(q.get("name")))))
         elif url.path == "/api/logs":
@@ -1494,6 +1630,15 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         url = urlparse(self.path)
         q = {k: v[0] for k, v in parse_qs(url.query).items()}
+        # Browsers only send this header from our own page, so other sites can't make a signed-in user's browser post here
+        if self.headers.get("X-KubePulse") != "1":
+            return self._send(403, json.dumps({"error": "Missing X-KubePulse header"}).encode(), "application/json")
+        if url.path == "/api/login":
+            return self._login()
+        if url.path == "/api/logout":
+            return self._send(200, b"{}", "application/json", {"Set-Cookie": self._session_cookie("", 0)})
+        if not self._allowed(url.path):
+            return
         if url.path == "/api/investigate":
             self._api(lambda: json.dumps({"id": start_investigation(check_ns(q.get("ns")), check_name(q.get("name")),
                                                                    fresh=q.get("fresh") == "1")}))
@@ -1503,13 +1648,17 @@ class Handler(BaseHTTPRequestHandler):
             self._send(404, b"not found", "text/plain")
 
     def log_message(self, fmt, *args):
-        if not self.path.startswith(("/healthz", "/api/snapshot", "/api/investigation")):
+        if not self.path.startswith(("/healthz", "/api/snapshot", "/api/wallboard", "/api/investigation", "/api/me")):
             super().log_message(fmt, *args)
 
 
 if __name__ == "__main__":
     print(f"KubePulse listening on :{PORT} (API: {BASE_URL}, poll every {POLL_SECONDS}s, "
-          f"AI {'on' if OPENAI_API_KEY else 'off'}, alerts {'on' if MATTERMOST_WEBHOOK_URL else 'off'})", flush=True)
+          f"AI {'on' if OPENAI_API_KEY else 'off'}, alerts {'on' if MATTERMOST_WEBHOOK_URL else 'off'}, "
+          f"login {'on' if AUTH_ENABLED else 'OFF'}, wallboard {'public at /wall' if WALLBOARD_PUBLIC else 'needs login'})", flush=True)
+    if GENERATED_PASSWORD:
+        print(f"No KUBEPULSE_USERS set. Sign in as  admin / {GENERATED_PASSWORD}  (it changes on every restart; "
+              f"set KUBEPULSE_USERS in the kubepulse-secrets Secret to choose your own)", flush=True)
     threading.Thread(target=poll_loop, daemon=True).start()
     server = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
     server.daemon_threads = True

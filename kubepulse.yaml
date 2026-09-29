@@ -19,6 +19,10 @@ metadata:
 type: Opaque
 stringData:
   OPENAI_API_KEY: ""
+  # Who can sign in: "user:password,user2:password2". Empty = a random admin password, printed in the pod log.
+  KUBEPULSE_USERS: ""
+  # Keeps people signed in across restarts. Any long random string, e.g. from: openssl rand -hex 32
+  SESSION_SECRET: ""
   MATTERMOST_WEBHOOK_URL: ""
 ---
 # Read-only. KubePulse can't change anything and can't read Secrets.
@@ -86,7 +90,7 @@ spec:
         seccompProfile: { type: RuntimeDefault }
       containers:
         - name: kubepulse
-          image: christoj/kubepulse:0.5.1
+          image: christoj/kubepulse:0.6.1
           ports: [{ containerPort: 8080 }]
           envFrom:
             - secretRef: { name: kubepulse-secrets, optional: true }
@@ -97,6 +101,10 @@ spec:
               value: ""
             - name: NAMESPACES          # optional, e.g. "prod,uat"; empty = all
               value: ""
+            - name: WALLBOARD_PUBLIC    # /wall works without signing in, for office TVs
+              value: "true"
+            - name: SESSION_HOURS       # how long a sign-in lasts
+              value: "12"
             - name: POLL_SECONDS        # how often KubePulse reads the cluster
               value: "20"
             - name: OPENAI_MODEL
@@ -144,7 +152,7 @@ spec:
   ports: [{ port: 80, targetPort: 8080 }]
 ---
 # Optional: serve KubePulse at https://kubepulse.example.com/kubepulse. Change the host.
-# There is no login, so add authentication (e.g. nginx basic auth or oauth2-proxy) before exposing it.
+# Everything except /wall needs a sign-in. Set KUBEPULSE_USERS above before exposing it.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
