@@ -874,9 +874,12 @@ function mascot(mood = "happy", size = 72) {
   const glow = { panic: ["#ffd9d6", "#ff8a80"], sad: ["#dbe8ff", "#9ec2ff"], sleep: ["#e5e5ea", "#c7c7cc"] }[mood] || ["#fffbe0", "#ffe36b"];
   const look = { thinking: [-4, -5], sad: [0, 5], worried: [5, 1], working: [0, 6], panic: [0, 0] }[mood] || [0, 1];
   const pr = mood === "panic" ? 3 : 5;
-  const eye = (x) => `<g class="eye"><ellipse cx="${x}" cy="72" rx="19" ry="21" fill="#2c2c2e"/><ellipse cx="${x}" cy="72" rx="16" ry="18" fill="url(#${id}e)"/>
-      <g class="iris"><circle cx="${x + look[0]}" cy="${73 + look[1]}" r="${pr}" fill="${ink}"/><circle cx="${x + look[0] + 1.6}" cy="${71 + look[1]}" r="${pr * .35}" fill="#fff"/></g>
-      <ellipse cx="${x - 6}" cy="63" rx="5" ry="3" fill="#fff" opacity=".7"/></g>`;
+  const eye = (x) => `<g class="eye"><ellipse cx="${x}" cy="73" rx="20" ry="22" fill="url(#${id}s)"/>
+      <ellipse cx="${x}" cy="72" rx="16" ry="18" fill="url(#${id}e)"/>
+      <ellipse cx="${x}" cy="72" rx="16" ry="18" fill="url(#${id}ei)"/>
+      <g class="iris"><circle cx="${x + look[0]}" cy="${73 + look[1]}" r="${pr}" fill="url(#${id}p)"/><circle cx="${x + look[0] + 1.6}" cy="${71 + look[1]}" r="${pr * .32}" fill="#fff"/></g>
+      <path d="M${x - 12} 66 q4 -10 14 -11" stroke="#fff" stroke-width="3.2" fill="none" stroke-linecap="round" opacity=".85"/>
+      <circle cx="${x + 9}" cy="82" r="1.8" fill="#fff" opacity=".6"/></g>`;
   const lid = (x, d) => `<path d="${d}" fill="url(#${id}h)" clip-path="url(#${id}c${x})"/>`;
   const lids = {
     sleep: lid(60, "M40 50 h40 v24 q-20 6 -40 0z") + lid(100, "M80 50 h40 v24 q-20 6 -40 0z") + `<path d="M46 74 q14 8 28 0 M86 74 q14 8 28 0" stroke="${ink}" stroke-width="2.6" fill="none" stroke-linecap="round"/>`,
@@ -911,8 +914,10 @@ function mascot(mood = "happy", size = 72) {
     ? `<ellipse cx="42" cy="96" rx="7" ry="4" fill="#ff6b8a" opacity=".45"/><ellipse cx="118" cy="96" rx="7" ry="4" fill="#ff6b8a" opacity=".45"/>` : "";
 
   // Arms from the shoulders (60,128) and (100,128); hands are yellow
-  const hand = (x, y) => `<circle cx="${x}" cy="${y}" r="7.5" fill="${Y}" stroke="${YE}" stroke-width="1.5"/>`;
-  const arm = (d) => `<path d="${d}" stroke="${metal}" stroke-width="7" fill="none" stroke-linecap="round"/>`;
+  const hand = (x, y) => `<circle cx="${x}" cy="${y}" r="8" fill="url(#${id}y)"/><ellipse cx="${x - 2.5}" cy="${y - 3}" rx="3" ry="2" fill="#fff" opacity=".75"/>`;
+  const arm = (d) => `<path d="${d}" stroke="#2c2c2e" stroke-width="8.5" fill="none" stroke-linecap="round"/>
+      <path d="${d}" stroke="#6e6e73" stroke-width="5" fill="none" stroke-linecap="round"/>
+      <path d="${d}" stroke="#aeaeb2" stroke-width="1.6" fill="none" stroke-linecap="round" transform="translate(-1 -1.2)" opacity=".9"/>`;
   const hipL = arm("M60 128 Q44 136 54 150") + hand(56, 150), hipR = arm("M100 128 Q116 136 106 150") + hand(104, 150);
   const downL = arm("M60 128 Q48 142 48 156") + hand(48, 159), downR = arm("M100 128 Q112 142 112 156") + hand(112, 159);
   const arms = {
@@ -920,14 +925,14 @@ function mascot(mood = "happy", size = 72) {
     wave: hipL + `<g class="wave">${arm("M100 128 Q120 118 124 98")}${hand(125, 92)}</g>`,
     celebrate: `<g class="cheer">${arm("M60 128 Q40 114 36 94")}${hand(35, 88)}</g><g class="cheer r">${arm("M100 128 Q120 114 124 94")}${hand(125, 88)}</g>`,
     panic: `<g class="flail">${arm("M60 128 Q38 118 30 100")}${hand(28, 94)}</g><g class="flail r">${arm("M100 128 Q122 118 130 100")}${hand(132, 94)}</g>`,
-    thumbs: hipL + arm("M100 128 Q118 124 120 110") + hand(120, 106) + `<rect x="117" y="91" width="6" height="12" rx="3" fill="${Y}" stroke="${YE}" stroke-width="1.5"/>`,
+    thumbs: hipL + arm("M100 128 Q118 124 120 110") + hand(120, 106) + `<rect x="116.5" y="90" width="7" height="13" rx="3.5" fill="url(#${id}y)"/>`,
     thinking: downR + arm("M60 128 Q58 120 68 114") + hand(72, 112),
     working: `<rect x="52" y="136" width="56" height="30" rx="4" fill="#d1d1d6" stroke="#aeaeb2" stroke-width="1.5"/>
         <text x="80" y="156" text-anchor="middle" font-family="SF Mono, Menlo, monospace" font-size="11" font-weight="700" fill="#b38f00">&lt;/&gt;</text>
         <rect x="46" y="165" width="68" height="5" rx="2.5" fill="#aeaeb2"/>
         <g class="type">${arm("M60 128 Q50 150 58 160")}${hand(60, 162)}</g><g class="type r">${arm("M100 128 Q110 150 102 160")}${hand(100, 162)}</g>`,
-    shy: `<g class="peek">${arm("M60 128 Q40 104 52 84")}<ellipse cx="60" cy="72" rx="17" ry="14" fill="${Y}" stroke="${YE}" stroke-width="1.5"/></g>
-        ${arm("M100 128 Q120 104 108 84")}<ellipse cx="100" cy="72" rx="17" ry="14" fill="${Y}" stroke="${YE}" stroke-width="1.5"/>`,
+    shy: `<g class="peek">${arm("M60 128 Q40 104 52 84")}<ellipse cx="60" cy="72" rx="17" ry="14" fill="url(#${id}y)"/><ellipse cx="54" cy="66" rx="6" ry="3.5" fill="#fff" opacity=".7"/></g>
+        ${arm("M100 128 Q120 104 108 84")}<ellipse cx="100" cy="72" rx="17" ry="14" fill="url(#${id}y)"/><ellipse cx="94" cy="66" rx="6" ry="3.5" fill="#fff" opacity=".7"/>`,
   }[mood] || downL + downR;
 
   const extra = {
@@ -944,27 +949,45 @@ function mascot(mood = "happy", size = 72) {
   const w = Math.round(size * 160 / 190);
   return `<svg class="mascot ${mood}" width="${w}" height="${size}" viewBox="0 0 160 190" aria-hidden="true">
     <defs>
-      <radialGradient id="${id}h" cx=".38" cy=".3" r=".85"><stop offset="0" stop-color="#ffffff"/><stop offset=".7" stop-color="#e9e9ee"/><stop offset="1" stop-color="#c7c7cc"/></radialGradient>
-      <radialGradient id="${id}e" cx=".5" cy=".45" r=".6"><stop offset="0" stop-color="${glow[0]}"/><stop offset="1" stop-color="${glow[1]}"/></radialGradient>
+      <radialGradient id="${id}h" cx=".36" cy=".26" r=".9"><stop offset="0" stop-color="#ffffff"/><stop offset=".45" stop-color="#f2f2f5"/><stop offset=".8" stop-color="#cfd0d6"/><stop offset="1" stop-color="#9c9ea8"/></radialGradient>
+      <radialGradient id="${id}e" cx=".5" cy=".58" r=".62"><stop offset="0" stop-color="#ffffff"/><stop offset=".35" stop-color="${glow[0]}"/><stop offset="1" stop-color="${glow[1]}"/></radialGradient>
+      <linearGradient id="${id}ei" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#000" stop-opacity=".38"/><stop offset=".35" stop-color="#000" stop-opacity="0"/></linearGradient>
+      <radialGradient id="${id}s" cx=".5" cy=".4" r=".6"><stop offset=".7" stop-color="#3a3a3c"/><stop offset="1" stop-color="#0f0f10"/></radialGradient>
+      <radialGradient id="${id}p" cx=".35" cy=".3" r=".8"><stop offset="0" stop-color="#4a4a4f"/><stop offset="1" stop-color="#050506"/></radialGradient>
+      <radialGradient id="${id}y" cx=".35" cy=".3" r=".8"><stop offset="0" stop-color="#fff3a6"/><stop offset=".45" stop-color="#ffd60a"/><stop offset="1" stop-color="#c48f00"/></radialGradient>
+      <radialGradient id="${id}m" cx=".35" cy=".3" r=".8"><stop offset="0" stop-color="#c7c7cc"/><stop offset=".6" stop-color="#8e8e93"/><stop offset="1" stop-color="#48484a"/></radialGradient>
+      <linearGradient id="${id}l" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#2c2c2e"/><stop offset=".45" stop-color="#8e8e93"/><stop offset="1" stop-color="#2c2c2e"/></linearGradient>
+      <radialGradient id="${id}ao" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#000" stop-opacity=".35"/><stop offset="1" stop-color="#000" stop-opacity="0"/></radialGradient>
+      <filter id="${id}f" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="6" stdDeviation="5" flood-color="#000" flood-opacity=".22"/></filter>
+      <filter id="${id}b" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="2.4"/></filter>
+      <filter id="${id}gl" x="-100%" y="-100%" width="300%" height="300%"><feGaussianBlur stdDeviation="3"/></filter>
       <clipPath id="${id}c60"><ellipse cx="60" cy="72" rx="16" ry="18"/></clipPath><clipPath id="${id}c100"><ellipse cx="100" cy="72" rx="16" ry="18"/></clipPath>
     </defs>
-    <ellipse class="shadow" cx="80" cy="184" rx="34" ry="5" fill="#000" opacity=".14"/>
+    <ellipse class="shadow" cx="80" cy="184" rx="36" ry="6" fill="url(#${id}ao)"/>
     ${extra}
-    <g class="body">
-      <rect x="64" y="152" width="11" height="20" rx="5" fill="${metal}"/><rect x="85" y="152" width="11" height="20" rx="5" fill="${metal}"/>
-      <path d="M56 180 q0 -10 14 -10 h6 v10z M104 180 q0 -10 -14 -10 h-6 v10z" fill="#f2f2f7" stroke="#c7c7cc"/>
+    <g class="body" filter="url(#${id}f)">
+      <rect x="64" y="152" width="11" height="20" rx="5" fill="url(#${id}l)"/><rect x="85" y="152" width="11" height="20" rx="5" fill="url(#${id}l)"/>
+      <path d="M56 180 q0 -10 14 -10 h6 v10z M104 180 q0 -10 -14 -10 h-6 v10z" fill="url(#${id}h)" stroke="#aeaeb2" stroke-width=".8"/>
       <path d="M58 177 h16 M86 177 h16" stroke="${Y}" stroke-width="2.4" stroke-linecap="round"/>
-      <path d="M60 122 h40 q6 0 6 8 v18 q0 10 -12 10 h-28 q-12 0 -12 -10 v-18 q0 -8 6 -8z" fill="url(#${id}h)" stroke="#d1d1d6"/>
-      <rect x="67" y="129" width="26" height="17" rx="4" fill="#1c1c1e"/>
+      <path d="M60 122 h40 q6 0 6 8 v18 q0 10 -12 10 h-28 q-12 0 -12 -10 v-18 q0 -8 6 -8z" fill="url(#${id}h)"/>
+      <path d="M58 128 q2 -5 10 -5" stroke="#fff" stroke-width="2.5" fill="none" stroke-linecap="round" opacity=".9"/>
+      <rect x="66" y="128" width="28" height="19" rx="5" fill="#0c0c0e"/><rect x="67" y="129" width="26" height="17" rx="4" fill="#1c1c1e"/>
+      <path d="M69 131 h14" stroke="#fff" stroke-width="1.4" opacity=".25" stroke-linecap="round"/>
       <text x="80" y="141.5" text-anchor="middle" font-family="SF Mono, Menlo, monospace" font-size="9" font-weight="700" fill="${Y}">&lt;/&gt;</text>
-      <rect x="74" y="114" width="12" height="10" rx="3" fill="${metal}"/>
-      <path class="ant" d="M80 30 L80 12" stroke="${metal}" stroke-width="4" stroke-linecap="round"/><circle class="led" cx="80" cy="9" r="5.5" fill="${led}" stroke="${YE}" stroke-width="1"/>
-      <ellipse cx="80" cy="30" rx="12" ry="4" fill="#d1d1d6"/>
-      <circle cx="26" cy="72" r="11" fill="#8e8e93"/><circle cx="26" cy="72" r="6" fill="#636366" stroke="${Y}" stroke-width="2"/>
-      <circle cx="134" cy="72" r="11" fill="#8e8e93"/><circle cx="134" cy="72" r="6" fill="#636366" stroke="${Y}" stroke-width="2"/>
-      <ellipse cx="80" cy="72" rx="56" ry="46" fill="url(#${id}h)" stroke="#d1d1d6" stroke-width="1.2"/>
-      <path d="M40 46 q20 -16 44 -14" stroke="#fff" stroke-width="4" stroke-linecap="round" opacity=".9" fill="none"/>
-      <path d="M130 80 Q128 104 100 110" stroke="${metal}" stroke-width="3" fill="none" stroke-linecap="round"/><circle cx="98" cy="110" r="4" fill="${Y}"/>
+      <rect x="73" y="112" width="14" height="12" rx="3" fill="url(#${id}l)"/>
+      <ellipse cx="80" cy="124" rx="22" ry="5" fill="url(#${id}ao)"/>
+      <rect class="ant" x="77.8" y="11" width="4.4" height="20" rx="2.2" fill="url(#${id}l)"/>
+      <circle cx="80" cy="9" r="9" fill="${led}" opacity=".45" filter="url(#${id}gl)" class="led"/>
+      <circle class="led" cx="80" cy="9" r="5.5" fill="${led === Y ? `url(#${id}y)` : led}"/><circle cx="78" cy="7" r="1.6" fill="#fff" opacity=".8"/>
+      <ellipse cx="80" cy="30" rx="12" ry="4" fill="url(#${id}m)"/>
+      <circle cx="26" cy="72" r="11.5" fill="url(#${id}m)"/><circle cx="26" cy="72" r="6.5" fill="#3a3a3c" stroke="url(#${id}y)" stroke-width="2.4"/><circle cx="24" cy="69" r="2" fill="#fff" opacity=".35"/>
+      <circle cx="134" cy="72" r="11.5" fill="url(#${id}m)"/><circle cx="134" cy="72" r="6.5" fill="#3a3a3c" stroke="url(#${id}y)" stroke-width="2.4"/><circle cx="132" cy="69" r="2" fill="#fff" opacity=".35"/>
+      <ellipse cx="80" cy="72" rx="56" ry="46" fill="url(#${id}h)"/>
+      <ellipse cx="80" cy="72" rx="56" ry="46" fill="none" stroke="#fff" stroke-width="2" opacity=".55" clip-path="inset(55% 0 0 40%)"/>
+      <path d="M118 96 q10 -10 14 -26" stroke="#fff" stroke-width="2.5" fill="none" stroke-linecap="round" opacity=".7"/>
+      <ellipse cx="56" cy="44" rx="18" ry="8" fill="#fff" opacity=".95" filter="url(#${id}b)" transform="rotate(-20 56 44)"/>
+      <ellipse cx="50" cy="42" rx="5" ry="2.5" fill="#fff" transform="rotate(-20 50 42)"/>
+      <path d="M130 80 Q128 104 100 110" stroke="${metal}" stroke-width="3" fill="none" stroke-linecap="round"/><circle cx="98" cy="110" r="4.5" fill="url(#${id}y)"/>
       ${brows}${eyes}${blush}${mouth}
       ${arms}
     </g></svg>`;
