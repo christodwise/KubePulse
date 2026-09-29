@@ -22,6 +22,7 @@ Kubernetes. The screenshots use demo data.
 **See the cluster at a glance**
 - Health score, cluster CPU / memory / pod trends, and a list of what needs attention right now
 - **Kubi**, a little robot IT engineer with glowing yellow eyes and a headset, has an expression for every moment: grinning when the cluster is healthy, sweating when it's degraded, panicking when it's critical, asleep when data is stale, celebrating when all is clear, and thinking or typing away while he diagnoses a pod
+- On the home page Kubi **walks around**: he stops to look around, waves, tells you how the cluster is doing, and runs around in a panic when something is critical. Click him to jump straight to the problems
 - A **cluster map**: every node as a card, every pod as a dot, coloured by status; failing pods breathe red
 - Pods, Nodes and Events pages with search and filters. The URL keeps your filters, so `/#pods?ns=prod&problems=1` is a link you can share
 
