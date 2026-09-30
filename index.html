@@ -542,6 +542,8 @@
   @media (max-width: 760px) { .resgrid { grid-template-columns: 1fr; } }
 
   .madeby { margin-top: 36px; text-align: center; font-size: 13px; color: var(--muted); }
+  .login-madeby { position: absolute; left: 0; right: 0; bottom: 22px; margin: 0; }
+  @media (max-height: 700px) { .login-madeby { position: static; margin-top: 18px; } }
 
   /* Keyboard help */
   .kbd-help { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; background: rgba(0, 0, 0, .2); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
@@ -693,6 +695,7 @@
       <div class="login-foot"><a class="linkbtn" id="wallLink" href="wall">Open the wallboard</a></div>
     </form>
   </div>
+  <footer class="madeby login-madeby">Made by Lifetrenz DevOps team ❤️</footer>
 </div>
 
 <div class="app">
