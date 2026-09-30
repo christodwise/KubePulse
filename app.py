@@ -56,6 +56,12 @@ ALERT_COOLDOWN = int(env("ALERT_COOLDOWN_MINUTES", "30")) * 60
 ALERT_RESOLVED = env("ALERT_RESOLVED", "true").lower() == "true"
 CERT_WARN_DAYS = int(env("CERT_WARN_DAYS", "14"))
 PVC_WARN_PERCENT = int(env("PVC_WARN_PERCENT", "85"))
+# Rollout tracking and the Mattermost digest
+DEPLOY_ALERTS = env("DEPLOY_ALERTS", "true").lower() == "true"          # post rollouts, and flag ones followed by crashes
+DIGEST = env("DIGEST", "daily").lower()                                  # daily, weekly or off
+DIGEST_TIME = env("DIGEST_TIME", "09:00")
+DIGEST_DAY = env("DIGEST_DAY", "mon").lower()                            # for weekly
+DIGEST_TIMEZONE = env("DIGEST_TIMEZONE", "UTC")                          # e.g. Asia/Kolkata, Asia/Dubai
 
 # Trend data (restart timeline, daily uptime) survives container restarts here
 DATA_DIR = Path(env("DATA_DIR", "/data"))
@@ -385,6 +391,7 @@ class Insights:
         self.timeline = {}   # bucket start -> [restarts, crashes, oomkills]
         self.days = {}       # "YYYY-MM-DD" -> [sum of healthy %, samples]
         self.usage = {}      # (ns, pod) -> [cpu average, memory peak, samples]
+        self.restart_log = []  # (when, ns, owner, restarts, last reason), 7 days, for the digest
         self.peak = {}       # (ns, pod) -> {"cpu": (value, when), "mem": (value, when)}, highest in the last 24 hours
         self.created = {}    # (ns, owner) -> {pod: created at}
         self.ended = {}      # (ns, owner) -> [(created at, ended at)]
@@ -401,13 +408,21 @@ class Insights:
             self.days = state.get("days", {})
             keep_after = time.time() - HISTORY_POINTS * POLL_SECONDS
             HISTORY.extend(h for h in state.get("history", []) if h[0] > keep_after)
+            self.restart_log = [tuple(r) for r in state.get("restarts", []) if time.time() - r[0] < 7 * 86400]
+            ROLLOUTS.load(state)
+            DIGEST_SENDER.last = state.get("digestLast", "")
         except Exception:
             pass
+
+    def save_now(self):
+        self.saved_at = time.time()
+        self._save()
 
     def _save(self):
         try:
             tmp = DATA_DIR / "state.json.tmp"
-            tmp.write_text(json.dumps({"timeline": self.timeline, "days": self.days, "history": list(HISTORY)}))
+            tmp.write_text(json.dumps({"timeline": self.timeline, "days": self.days, "history": list(HISTORY),
+                                       "restarts": self.restart_log, "rollouts": ROLLOUTS.dump(), "digestLast": DIGEST_SENDER.last}))
             tmp.replace(DATA_DIR / "state.json")
         except Exception:
             pass  # no writable volume: keep it in memory only
@@ -432,6 +447,7 @@ class Insights:
                 delta = p["restarts"] - prev[0] if prev else 0
                 if delta > 0:
                     bucket[0] += delta
+                    self.restart_log.append((now, k[0], p["owner"] or "Pod/" + k[1], delta, p["lastReason"] or ""))
                     if p["lastReason"] == "OOMKilled":
                         bucket[2] += delta
                 if p["level"] == "bad" and (not prev or prev[1] != "bad"):
@@ -446,6 +462,7 @@ class Insights:
         day[1] += 1
         for d in sorted(self.days)[:-8]:
             del self.days[d]
+        self.restart_log = [r for r in self.restart_log if now - r[0] < 7 * 86400]
 
         # Usage per pod: CPU as a moving average, memory as the peak seen
         for k, p in cur.items():
@@ -707,6 +724,250 @@ def pvc_rows(nodes):
             "percent": round(used / cap * 100, 1) if used is not None and cap else None,
         })
     return sorted(rows, key=lambda r: (r["phase"] == "Bound", -(r["percent"] or 0)))
+
+
+# ---------- Rollouts: what changed, when, and whether it went well ----------
+
+ROLLOUT_KINDS = {"Deployment": "deployments", "StatefulSet": "statefulsets", "DaemonSet": "daemonsets"}
+RESTART_ANNOTATION = "kubectl.kubernetes.io/restartedAt"
+
+
+def _template_summary(tmpl):
+    """What matters about a pod template, per container, so two versions can be compared."""
+    spec = (tmpl or {}).get("spec", {})
+    out = {}
+    for c in spec.get("initContainers", []) + spec.get("containers", []):
+        out[c["name"]] = {
+            "image": c.get("image", ""),
+            "resources": json.dumps(c.get("resources", {}), sort_keys=True),
+            "env": hashlib.sha1(json.dumps([c.get("env", []), c.get("envFrom", [])], sort_keys=True).encode()).hexdigest()[:10],
+            "command": json.dumps([c.get("command"), c.get("args")]),
+        }
+    return out
+
+
+def _short_image(image):
+    return image.rsplit("/", 1)[-1]
+
+
+def _describe_change(old, new, restart_only):
+    """Plain-language list of what changed between two template summaries."""
+    if restart_only:
+        return ["Restarted (kubectl rollout restart)"]
+    changes = []
+    for name, c in new.items():
+        o = old.get(name)
+        if not o:
+            changes.append(f"Added container {name}")
+            continue
+        if o["image"] != c["image"]:
+            changes.append(f"{name}: {_short_image(o['image'])} → {_short_image(c['image'])}")
+        if o["resources"] != c["resources"]:
+            changes.append(f"{name}: resources changed")
+        if o["env"] != c["env"]:
+            changes.append(f"{name}: environment changed")
+        if o["command"] != c["command"]:
+            changes.append(f"{name}: command changed")
+    changes += [f"Removed container {n}" for n in old if n not in new]
+    return changes or ["Pod template changed"]
+
+
+def _rollout_state(kind, obj):
+    """(done, failed, ready text) for a workload."""
+    spec, st = obj.get("spec", {}), obj.get("status", {})
+    if kind == "DaemonSet":
+        want, updated, ready = st.get("desiredNumberScheduled", 0), st.get("updatedNumberScheduled", 0), st.get("numberReady", 0)
+    else:
+        want, updated, ready = spec.get("replicas", 1), st.get("updatedReplicas", 0), st.get("readyReplicas", 0)
+    stuck = any(c.get("reason") == "ProgressDeadlineExceeded" for c in st.get("conditions", []) or [])
+    done = updated >= want and ready >= want and st.get("observedGeneration", 0) >= obj["metadata"].get("generation", 0)
+    return done, stuck, f"{ready}/{want} ready"
+
+
+class Rollouts:
+    KEEP = 7 * 86400
+
+    def __init__(self):
+        self.templates = {}   # (ns, kind, name) -> (template hash, summary, restartedAt)
+        self.events = []      # newest last
+        self.started = False
+
+    def load(self, state):
+        self.events = [e for e in state.get("rollouts", []) if time.time() - e["at"] < self.KEEP]
+
+    def dump(self):
+        return self.events
+
+    def update(self, snap):
+        now = time.time()
+        seen, new = set(), []
+        for kind, res in ROLLOUT_KINDS.items():
+            paths = [f"/apis/apps/v1/namespaces/{ns}/{res}" for ns in NAMESPACES] or [f"/apis/apps/v1/{res}"]
+            for path in paths:
+                items = (k8s_get_optional(path + "?resourceVersion=0") or {}).get("items", [])
+                for obj in items:
+                    meta = obj["metadata"]
+                    key = (meta["namespace"], kind, meta["name"])
+                    seen.add(key)
+                    tmpl = obj.get("spec", {}).get("template", {})
+                    restarted = ((tmpl.get("metadata") or {}).get("annotations") or {}).get(RESTART_ANNOTATION)
+                    digest = hashlib.sha1(json.dumps(tmpl, sort_keys=True).encode()).hexdigest()
+                    summary = _template_summary(tmpl)
+                    old = self.templates.get(key)
+                    self.templates[key] = (digest, summary, restarted)
+                    if old and old[0] != digest and self.started:
+                        restart_only = old[1] == summary and old[2] != restarted
+                        ev = {"namespace": key[0], "kind": kind, "name": key[2], "at": now, "changes": _describe_change(old[1], summary, restart_only),
+                              "images": sorted({_short_image(c["image"]) for c in summary.values()}),
+                              "revision": (meta.get("annotations") or {}).get("deployment.kubernetes.io/revision"),
+                              "status": "rolling", "ready": "", "finishedAt": None, "notified": False}
+                        self.events.append(ev)
+                        new.append(ev)
+                    for ev in self.events:
+                        if (ev["namespace"], ev["kind"], ev["name"]) == key and ev["status"] == "rolling":
+                            done, stuck, ready = _rollout_state(kind, obj)
+                            ev["ready"] = ready
+                            if done:
+                                ev["status"], ev["finishedAt"] = "done", now
+                            elif stuck or now - ev["at"] > 900:
+                                ev["status"], ev["finishedAt"] = "stuck", now
+        for key in set(self.templates) - seen:
+            del self.templates[key]
+        self.started = True
+
+        # Health after each rollout: unhealthy pods owned by that workload right now
+        by_owner = {}
+        for p in snap["pods"]:
+            if p["owner"]:
+                e = by_owner.setdefault((p["namespace"], p["owner"]), [0, 0])
+                e[0] += 1
+                e[1] += p["level"] == "bad"
+        for ev in self.events:
+            total, bad = by_owner.get((ev["namespace"], f"{ev['kind']}/{ev['name']}"), [0, 0])
+            ev["pods"], ev["failing"] = total, bad
+        self.events = [e for e in self.events if now - e["at"] < self.KEEP][-200:]
+        snap["rollouts"] = [dict(e, ago=int(now - e["at"])) for e in reversed(self.events[-40:])]
+        return new
+
+    def recent_for(self, ns, owner, within=3600):
+        """The latest rollout of a pod's workload in the last hour, for alert context."""
+        now = time.time()
+        for ev in reversed(self.events):
+            if ev["namespace"] == ns and f"{ev['kind']}/{ev['name']}" == owner and now - ev["at"] < within:
+                return ev
+        return None
+
+    def since(self, seconds):
+        now = time.time()
+        return [e for e in self.events if now - e["at"] < seconds]
+
+
+ROLLOUTS = Rollouts()
+
+
+# ---------- Daily / weekly digest to Mattermost ----------
+
+def _tz():
+    try:
+        from zoneinfo import ZoneInfo
+        return ZoneInfo(DIGEST_TIMEZONE)
+    except Exception:
+        return timezone.utc
+
+
+def build_digest(snap, days):
+    """A summary of the last day (or week) for the channel."""
+    ins, window = snap.get("insights") or {}, days * 86400
+    up = ins.get("uptime") or []
+    past = [d["score"] for d in up[-days - 1:-1]]
+    scores = past or [d["score"] for d in up[-1:]]
+    period = ("yesterday" if days == 1 else "this week") if past else "so far today"
+    score = sum(scores) / len(scores) if scores else None
+    mood = "🌟" if score and score >= 99.5 else "👍" if score and score >= 98 else "😬" if score else "📊"
+    title = f"#### 📬 {('[' + CLUSTER_NAME + '] ') if CLUSTER_NAME else ''}KubePulse {'daily' if days == 1 else 'weekly'} digest {mood}"
+
+    lines = []
+    if score is not None:
+        extra = ""
+        if days > 1 and len(up) > 1:
+            extra = "  " + " ".join(f"{datetime.strptime(d['day'], '%Y-%m-%d').strftime('%a')} {d['score']:.0f}%" for d in up[-7:])
+        lines.append(f"**Uptime {period}:** {score:.1f}% of pods healthy{extra}")
+
+    restarts = [r for r in INSIGHTS.restart_log if time.time() - r[0] < window]
+    total = sum(r[3] for r in restarts)
+    ooms = sum(r[3] for r in restarts if r[4] == "OOMKilled")
+    by_owner = {}
+    for _, ns, owner, n, _ in restarts:
+        by_owner[(ns, owner)] = by_owner.get((ns, owner), 0) + n
+    top = sorted(by_owner.items(), key=lambda kv: -kv[1])[:3]
+    if total:
+        lines.append(f"**Restarts:** {total}" + (f" ({ooms} out of memory 🧠)" if ooms else "") + " · most: "
+                     + ", ".join(f"{ns}/{owner.split('/')[-1]} ×{n}" for (ns, owner), n in top))
+    else:
+        lines.append("**Restarts:** none 🎉")
+
+    rolls = [e for e in ROLLOUTS.events if time.time() - e["at"] < window]
+    if rolls:
+        bad = [e for e in rolls if e.get("failing") or e["status"] == "stuck"]
+        shown = ", ".join(f"{e['name']} ({e['changes'][0]})" for e in rolls[-4:])
+        lines.append(f"**Rollouts:** {len(rolls)}" + (f", {len(bad)} with problems ⚠️" if bad else ", all healthy ✅") + f" · {shown}")
+
+    now_bad = [p for p in snap["pods"] if p["level"] == "bad"]
+    now_warn = [p for p in snap["pods"] if p["level"] == "warn"]
+    down = [n for n in snap["nodes"] if not n["ready"]]
+    if now_bad or now_warn or down:
+        lines.append(f"**Right now:** {len(now_bad)} failing, {len(now_warn)} need a look" + (f", {len(down)} node(s) down 🖥️" if down else "")
+                     + (" · " + ", ".join(f"{p['namespace']}/{p['name']}" for p in now_bad[:3]) if now_bad else ""))
+    else:
+        lines.append(f"**Right now:** all {len(snap['pods'])} pods healthy ✅")
+
+    certs = [c for c in snap.get("certs") or [] if c["daysLeft"] is not None and c["daysLeft"] < CERT_WARN_DAYS]
+    if certs:
+        lines.append("**Certificates:** " + ", ".join(f"🔐 {c['name']} in {c['daysLeft']:.0f}d" for c in certs[:3]))
+    vols = [v for v in snap.get("pvcs") or [] if v.get("percent") and v["percent"] >= 80]
+    if vols:
+        lines.append("**Volumes:** " + ", ".join(f"💾 {v['namespace']}/{v['name']} {v['percent']:.0f}%" for v in vols[:3]))
+    top24 = ins.get("top24") or {}
+    if top24.get("cpu") and top24.get("mem"):
+        c, m = top24["cpu"][0], top24["mem"][0]
+        lines.append(f"**Busiest:** CPU {c['namespace']}/{c['name']} peaked {c['peak'] * 1000:.0f}m · memory {m['namespace']}/{m['name']} peaked {m['peak'] / 1024**2:.0f}Mi")
+    waste = ins.get("waste") or []
+    if waste:
+        w = waste[0]
+        lines.append(f"**Could free up:** {w['namespace']}/{w['owner'].split('/')[-1]} reserves far more than it uses (see Insights)")
+    if DASHBOARD_URL:
+        lines.append(f"[Open KubePulse →]({DASHBOARD_URL}/#insights)")
+    return title + "\n" + "\n".join("- " + l if not l.startswith("[") else l for l in lines)
+
+
+class Digest:
+    def __init__(self):
+        self.last = ""   # the local date the last digest was sent for
+
+    def maybe_send(self, snap):
+        if DIGEST == "off" or not MATTERMOST_WEBHOOK_URL:
+            return
+        now = datetime.now(_tz())
+        hh, _, mm = DIGEST_TIME.partition(":")
+        if (now.hour, now.minute) < (int(hh or 9), int(mm or 0)):
+            return
+        if DIGEST == "weekly" and now.strftime("%a").lower()[:3] != DIGEST_DAY[:3]:
+            return
+        key = now.strftime("%Y-%m-%d")
+        if self.last == key:
+            return
+        self.last = key
+        self.send(snap)
+
+    def send(self, snap, days=None):
+        days = days or (7 if DIGEST == "weekly" else 1)
+        text = build_digest(snap, days)
+        post_json(MATTERMOST_WEBHOOK_URL, {"username": "KubePulse", "text": text})
+        INSIGHTS.save_now()
+        return text
+
+
+DIGEST_SENDER = Digest()
 
 
 INSIGHTS = Insights()
@@ -1319,7 +1580,8 @@ class Alerter:
         self.last_test = 0.0
 
     def status(self):
-        return {"enabled": bool(MATTERMOST_WEBHOOK_URL), "lastSent": self.last_sent, "lastError": self.last_error,
+        return {"digest": DIGEST, "digestTime": DIGEST_TIME, "digestTz": DIGEST_TIMEZONE, "digestDay": DIGEST_DAY, "deployAlerts": DEPLOY_ALERTS,
+                "enabled": bool(MATTERMOST_WEBHOOK_URL), "lastSent": self.last_sent, "lastError": self.last_error,
                 "active": len(self.active), "pendingMinutes": ALERT_PENDING // 60, "cooldownMinutes": ALERT_COOLDOWN // 60}
 
     def _current(self, snap):
@@ -1341,6 +1603,9 @@ class Alerter:
             stuck = p["kind"] in ("pending", "notready") and (p["stateAge"] or 0) >= ALERT_PENDING
             alert = {"kind": "pod", "ns": p["namespace"], "name": p["name"], "title": f"{p['namespace']}/{p['name']}",
                      "detail": latest.get(pk, ""), "fields": {"Node": p["node"] or "not scheduled", "Restarts": str(p["restarts"])}}
+            ro = ROLLOUTS.recent_for(p["namespace"], p["owner"]) if p["owner"] else None
+            if ro:
+                alert["fields"]["🚀 Rolled out"] = f"{fmt_age(int(time.time() - ro['at']))} ago · {ro['changes'][0]}"
             if p["kind"] in ("failing", "finished") or stuck:
                 reason = p["attention"] + (f" for {fmt_age(p['stateAge'])}" if stuck else "")
                 cur[("pod",) + pk] = dict(alert, reason=reason, level="bad" if p["kind"] == "failing" else "warn")
@@ -1412,6 +1677,22 @@ class Alerter:
 
     def _prefix(self):
         return f"[{CLUSTER_NAME}] " if CLUSTER_NAME else ""
+
+    def rollouts(self, new, snap):
+        """Post new rollouts, and warn once when a finished rollout left crashing pods behind."""
+        if not (MATTERMOST_WEBHOOK_URL and DEPLOY_ALERTS):
+            return
+        if new:
+            lines = [f"- **{e['namespace']}/{e['name']}** ({e['kind']}): " + "; ".join(e["changes"][:3]) for e in new[:10]]
+            self.send(f"#### 🚀 {self._prefix()}{'Rolling out' if len(new) == 1 else f'{len(new)} rollouts'}\n" + "\n".join(lines))
+        for e in ROLLOUTS.events:
+            if e["notified"] or e["status"] == "rolling":
+                continue
+            e["notified"] = True
+            if e.get("failing") or e["status"] == "stuck":
+                why = f"{e['failing']} of {e['pods']} pods failing" if e.get("failing") else f"not finished after 15 minutes ({e['ready']})"
+                self.send(f"#### ⚠️ {self._prefix()}Rollout of {e['namespace']}/{e['name']} looks unhealthy: {why}\nChange: " + "; ".join(e["changes"][:3])
+                          + (f"\n[Open KubePulse →]({DASHBOARD_URL}/#insights)" if DASHBOARD_URL else ""))
 
     def analyse_later(self, a):
         """Post a short AI analysis for a crash-looping pod, in the background, within the hourly budget."""
@@ -1532,7 +1813,13 @@ def poll_loop():
             snap = build_snapshot()
             record_history(snap)
             INSIGHTS.update(snap)
+            new_rollouts = ROLLOUTS.update(snap)
             ALERTS.check(snap)
+            ALERTS.rollouts(new_rollouts, snap)
+            try:
+                DIGEST_SENDER.maybe_send(snap)
+            except Exception as e:
+                print(f"digest failed: {api_error(e)[1]}", flush=True)
             snap["alerts"] = ALERTS.status()
             STORE.publish(snap)
         except Exception as e:
@@ -1557,6 +1844,8 @@ def load_users():
 
 
 USERS = load_users()
+if env("ADMIN_PASSWORD", "").strip():
+    USERS[env("ADMIN_USER", "admin").strip() or "admin"] = env("ADMIN_PASSWORD").strip()
 GENERATED_PASSWORD = None
 if AUTH_ENABLED and not USERS:
     GENERATED_PASSWORD = secrets.token_urlsafe(12)
@@ -1738,6 +2027,12 @@ class Handler(BaseHTTPRequestHandler):
                                                                    fresh=q.get("fresh") == "1")}))
         elif url.path == "/api/alerts/test":
             self._api(ALERTS.test)
+        elif url.path == "/api/digest/test":
+            def send_digest():
+                if not MATTERMOST_WEBHOOK_URL:
+                    raise BadRequest("Alerts are off. Set MATTERMOST_WEBHOOK_URL first.")
+                return json.dumps({"text": DIGEST_SENDER.send(STORE.snap, days=7 if q.get("weekly") == "1" else 1)})
+            self._api(send_digest)
         else:
             self._send(404, b"not found", "text/plain")
 

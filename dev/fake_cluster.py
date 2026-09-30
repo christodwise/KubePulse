@@ -12,6 +12,7 @@ import json
 import os
 import random
 import threading
+import time
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
@@ -21,6 +22,8 @@ NOW = datetime.now(timezone.utc)
 ts = lambda sec: (NOW - timedelta(seconds=sec)).strftime("%Y-%m-%dT%H:%M:%SZ")
 future = lambda sec: (NOW + timedelta(seconds=sec)).strftime("%Y-%m-%dT%H:%M:%SZ")
 HOOK_LOG = os.getenv("HOOK_LOG", "")
+STARTED = time.time()
+ROLL_AFTER = float(os.getenv("ROLL_AFTER", "40"))   # seconds until payments-api rolls out a new version
 
 NODES = [("node-system-0", "m5.xlarge", "4", "16Gi", "3860m", "14Gi"),
          ("node-apps-1", "m5.2xlarge", "8", "32Gi", "7910m", "29Gi"),
@@ -96,6 +99,35 @@ LOGS = """2026-09-24T06:28:01Z INFO  Starting payments-api v2.4.1
 VOLUMES = {("prod", "pg-data"): (46, 50), ("monitoring", "prometheus-db"): (61, 100)}   # GiB used, GiB size
 
 
+def workloads(kind):
+    """Deployments / StatefulSets derived from the fake pods; payments-api gets a new image after ROLL_AFTER seconds."""
+    if kind == "daemonsets":
+        return []
+    out, seen = [], set()
+    for p in PODS:
+        ref = p["metadata"]["ownerReferences"][0]
+        is_sts = ref["kind"] == "StatefulSet"
+        if (kind == "statefulsets") != is_sts or ref["kind"] not in ("ReplicaSet", "StatefulSet"):
+            continue
+        ns, app = p["metadata"]["namespace"], p["metadata"]["labels"]["app"]
+        name = ref["name"] if is_sts else app
+        if (ns, name) in seen:
+            continue
+        seen.add((ns, name))
+        image = p["spec"]["containers"][0]["image"]
+        rolled = name == "payments-api" and time.time() - STARTED > ROLL_AFTER
+        if name == "payments-api":
+            image = "example/payments:2.4.1" if rolled else "example/payments:2.4.0"
+        replicas = sum(1 for x in PODS if x["metadata"]["namespace"] == ns and x["metadata"]["labels"]["app"] == app)
+        out.append({"metadata": {"namespace": ns, "name": name, "generation": 2 if rolled else 1,
+                                 "annotations": {"deployment.kubernetes.io/revision": "14" if rolled else "13"}},
+                    "spec": {"replicas": replicas, "template": {"metadata": {"labels": {"app": app}},
+                             "spec": {"containers": [dict(p["spec"]["containers"][0], image=image)]}}},
+                    "status": {"observedGeneration": 2 if rolled else 1, "replicas": replicas, "updatedReplicas": replicas,
+                               "readyReplicas": 1 if name == "payments-api" else replicas}})
+    return out
+
+
 def find(ns, name):
     return next((p for p in PODS if p["metadata"]["namespace"] == ns and p["metadata"]["name"] == name), None)
 
@@ -142,6 +174,8 @@ class Kubernetes(BaseHTTPRequestHandler):
                 "containers": [{"usage": {"cpu": f"{random.randint(20, 90) if p['metadata']['labels']['app'] in ('reports', 'search') else random.randint(1, 300)}m",
                                           "memory": f"{random.randint(20, 200)}Mi"}}]}
                 for p in PODS if p["spec"].get("nodeName")]})
+        if path in ("/apis/apps/v1/deployments", "/apis/apps/v1/statefulsets", "/apis/apps/v1/daemonsets"):
+            return self.send({"items": workloads(path.rsplit("/", 1)[1])})
         if path == "/api/v1/events":
             return self.send({"items": [e for e in EVENTS if e["type"] == "Warning"]})
         if path == "/api/v1/services":

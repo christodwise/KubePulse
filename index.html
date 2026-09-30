@@ -769,7 +769,7 @@
         <div class="card tl-card"><div class="card-h"><h2>Restart timeline</h2><span class="muted">last 24 hours</span><span class="grow"></span><span class="muted" id="tlPeak"></span></div>
           <p class="explain">Each bar is 15 minutes. Spikes at the same time every day usually mean a scheduled job, a backup or a traffic peak.</p>
           <div id="timeline"></div>
-          <div class="tl-legend"><span style="--c:var(--brand)"><i></i>Restarts</span><span style="--c:var(--warn)"><i></i>of which OOMKilled (out of memory)</span><span style="--c:var(--bad)"><i></i>A pod started failing</span></div>
+          <div class="tl-legend"><span style="--c:var(--brand)"><i></i>Restarts</span><span style="--c:var(--warn)"><i></i>of which OOMKilled (out of memory)</span><span style="--c:var(--bad)"><i></i>A pod started failing</span><span style="--c:var(--brand)"><i></i>A rollout (dashed line)</span></div>
           <div class="statrow" id="tlStats"></div></div>
       </div>
       <div class="card" style="margin-bottom:14px"><div class="card-h"><h2>Top offenders</h2><span class="muted">the noisiest pods right now</span></div>
@@ -785,9 +785,9 @@
         <div class="card" style="grid-column: 1 / -1"><div class="card-h"><h2>Resource waste</h2><span class="grow"></span><span class="save" id="wasteTotal"></span></div>
           <p class="explain">Workloads reserving far more than they use. Lower requests toward the suggestion, a step at a time.</p>
           <div id="waste"></div></div>
-        <div class="card"><div class="card-h"><h2>Recent changes</h2><span class="muted">pods created in the last hour</span></div>
-          <p class="explain">Rollouts, scaling and restarts. A change that lines up with unhealthy pods is the usual suspect.</p>
-          <div class="list" id="changes"></div></div>
+        <div class="card" style="grid-column: 1 / -1"><div class="card-h"><h2>Rollouts</h2><span class="muted">what changed in the last 7 days</span><span class="grow"></span><span class="muted" id="rollSub"></span></div>
+          <p class="explain">Every new version of a Deployment, StatefulSet or DaemonSet, what changed, and how its pods are doing now. A rollout followed by failing pods is the usual suspect.</p>
+          <div id="rollouts"></div></div>
         <div class="card"><div class="card-h"><h2>Short-lived pods</h2><span class="muted">pods that keep being replaced</span></div>
           <p class="explain">Workloads that keep replacing their pods, even if they look Running now.</p>
           <div id="churn"></div></div>
@@ -1233,7 +1233,12 @@ function timelineSvg(tl, tall) {
       grid += `<line class="gl" x1="${x}" x2="${x}" y1="6" y2="${base}"/><text class="ax" x="${x}" y="${H - 6}">${t.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</text>`;
     }
   }
-  return `<svg class="tlsvg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">${grid}<line class="gl" x1="0" x2="${W}" y1="${base}" y2="${base}" style="stroke-dasharray:none"/>${bars}</svg>`;
+  const marks = (data.rollouts || []).map((e) => {
+    const at = Date.now() / 1000 - e.ago, x = (at - tl.start) / (n * tl.bucketSeconds) * W;
+    return x < 0 || x > W ? "" : `<g class="rmark"><line x1="${x}" x2="${x}" y1="4" y2="${base}" stroke="var(--brand)" stroke-width="1.5" stroke-dasharray="3 3"/>
+      <circle cx="${x}" cy="6" r="4" fill="var(--brand)"><title>Rollout: ${esc(e.namespace)}/${esc(e.name)} · ${esc(e.changes[0])}</title></circle></g>`;
+  }).join("");
+  return `<svg class="tlsvg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">${grid}${marks}<line class="gl" x1="0" x2="${W}" y1="${base}" y2="${base}" style="stroke-dasharray:none"/>${bars}</svg>`;
 }
 
 function offendersHtml(limit = 5) {
@@ -1417,21 +1422,18 @@ function renderInsights() {
       <div class="card-foot">Per pod. Based on CPU averaged and memory at its peak since KubePulse started, with 50% (CPU) and 30% (memory) headroom.</div>`
     : `<div class="empty">${mascot("thumbs", 90)}<b>Nothing oversized</b>Requests look close to real usage. This needs about 5 minutes of data after KubePulse starts.</div>`;
 
-  // Recent changes: pods created in the last hour, grouped by workload
-  const groups = new Map();
-  data.pods.filter((p) => p.age != null && p.age < 3600).forEach((p) => {
-    const k = p.namespace + " " + (p.owner || "Pod/" + p.name);
-    const g = groups.get(k) || { ns: p.namespace, owner: p.owner || "Pod/" + p.name, pods: [], newest: p.age };
-    g.pods.push(p); g.newest = Math.min(g.newest, p.age); groups.set(k, g);
-  });
-  const changes = [...groups.values()].sort((a, b) => a.newest - b.newest);
-  $("changes").innerHTML = changes.length ? changes.map((g) => {
-    const bad = g.pods.filter((p) => p.level !== "ok"), first = bad[0] || g.pods[0];
-    return `<button class="row" ${podAttrs(first.namespace, first.name)}><span class="dot ${bad.length ? "bad-c" : "ok-c"}"></span>
-      <div style="min-width:0"><div class="t">${esc(ownerName(g.owner))} <span class="muted" style="font-weight:400">${esc(ownerKind(g.owner))}</span></div>
-      <div class="m">${esc(g.ns)} · ${plural(g.pods.length, "new pod")}${bad.length ? ` · <span class="hot">${bad.length} unhealthy, may be related</span>` : " · all healthy"}</div></div>
-      <span class="muted" style="font-size:12px">${fmtAge(g.newest)} ago</span></button>`;
-  }).join("") : `<div class="empty">No new pods in the last hour, so nothing was rolled out or restarted recently.</div>`;
+  // Rollouts
+  const rolls = data.rollouts || [];
+  $("rollSub").textContent = rolls.length ? plural(rolls.length, "rollout") : "";
+  $("rollouts").innerHTML = rolls.length ? `<div class="tablewrap"><table class="mini-table"><thead><tr><th>Workload</th><th>What changed</th><th>Status</th><th class="num">Pods now</th><th class="num">When</th></tr></thead><tbody>
+    ${rolls.slice(0, 20).map((e) => {
+      const lvl = e.failing ? "bad" : e.status === "stuck" ? "warn" : e.status === "rolling" ? "muted" : "ok";
+      const label = e.failing ? `${e.failing} failing` : { rolling: "Rolling out…", stuck: "Stuck", done: "Healthy" }[e.status];
+      return `<tr><td><b>${esc(e.name)}</b><small>${esc(e.namespace)} · ${esc(e.kind)}${e.revision ? " · rev " + esc(e.revision) : ""}</small></td>
+        <td style="white-space:normal">${e.changes.map(esc).join("<br>")}</td>
+        <td><span class="tag ${lvlClass(lvl)}">${label}</span></td><td class="num">${e.pods ?? "–"}</td><td class="num muted">${fmtAge(e.ago)} ago</td></tr>`;
+    }).join("")}</tbody></table></div>`
+    : `<div class="empty">No rollouts yet. KubePulse starts tracking changes from the moment it starts running.</div>`;
 
   // Short-lived pods
   const churn = ins.churn || [];
@@ -1480,7 +1482,11 @@ function renderEvents() {
       <ul><li>Failing pods: CrashLoopBackOff, image pull errors, config errors, OOMKilled</li><li>Pods pending or not ready for ${a.pendingMinutes}+ minutes</li>
         <li>Nodes that go NotReady</li><li>Recoveries, so you know when it's fixed</li></ul>
       <div class="muted" style="font-size:12.5px;margin-bottom:12px">The same problem won't alert again for ${a.cooldownMinutes} minutes after it recovers.</div>
-      <button class="btn" id="testAlert">Send test message</button> <span class="muted" id="testResult" style="font-size:12.5px"></span>`
+      <button class="btn" id="testAlert">Send test message</button> <span class="muted" id="testResult" style="font-size:12.5px"></span>
+      <div class="sec" style="margin-top:18px">Digest</div>
+      <div class="kvs"><span>Schedule</span><b>${a.digest === "off" ? "Off" : a.digest === "weekly" ? `Weekly, ${esc(a.digestDay)} ${esc(a.digestTime)}` : `Daily, ${esc(a.digestTime)}`} ${a.digest === "off" ? "" : `(${esc(a.digestTz)})`}</b>
+        <span>Rollout alerts</span><b>${a.deployAlerts ? "On" : "Off"}</b></div>
+      <button class="btn" id="sendDigest">Send today's digest now</button> <span class="muted" id="digestResult" style="font-size:12.5px"></span>`
     : `<h3>Mattermost alerts are off</h3><div class="muted" style="font-size:13px">Add <code>MATTERMOST_WEBHOOK_URL</code> to the <code>kubepulse-secrets</code> Secret and restart KubePulse to get alerts in your channel.</div>`;
 }
 
@@ -1998,6 +2004,12 @@ $("copyLink").addEventListener("click", (e) => {
 $("sound").addEventListener("click", () => setSound(!soundOn));
 $("wbSound").addEventListener("click", () => setSound(!soundOn));
 $("alertCard").addEventListener("click", async (e) => {
+  if (e.target.id === "sendDigest") {
+    e.target.disabled = true; $("digestResult").textContent = "Sending…";
+    try { await getJSON(API + "digest/test", { method: "POST" }); $("digestResult").textContent = "Sent. Check your Mattermost channel."; }
+    catch (err) { $("digestResult").innerHTML = `<span class="hot">${esc(err.message)}</span>`; }
+    e.target.disabled = false; return;
+  }
   if (e.target.id !== "testAlert") return;
   e.target.disabled = true; $("testResult").textContent = "Sending…";
   try { await getJSON(API + "alerts/test", { method: "POST" }); $("testResult").textContent = "Sent. Check your Mattermost channel."; }

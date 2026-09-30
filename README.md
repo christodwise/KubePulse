@@ -36,6 +36,12 @@ Kubernetes. The screenshots use demo data.
   node capacity (reserved vs used), namespaces at a glance, **resource waste** with suggested requests,
   recent changes, short-lived pods, cert-manager certificate expiry, and **volumes with the space actually used** (from Prometheus)
 
+**Know what changed**
+- **Rollout tracking**: every new version of a Deployment, StatefulSet or DaemonSet, with what changed (image `2.4.0 → 2.4.1`, resources, environment, restart) and how its pods are doing now. Rollouts show as dashed lines on the restart timeline, and a crashing pod's alert says "🚀 Rolled out 6m ago · app: 2.4.0 → 2.4.1"
+- Mattermost gets 🚀 when a rollout starts and ⚠️ when one is followed by failing pods or doesn't finish in 15 minutes
+
+**A daily or weekly digest in Mattermost** 📬: uptime, restarts (and which workloads), rollouts, what's broken right now, certificates and volumes running out, the busiest pods, and waste worth fixing. Sent at `DIGEST_TIME` in `DIGEST_TIMEZONE`; **Send today's digest now** on the Events & alerts page
+
 **Get told when something breaks**
 - **Mattermost alerts** for failing pods, pods stuck pending or not ready, OOM kills, nodes going NotReady, certificates about to expire, volumes filling up, and recoveries. Each problem alerts once; flapping problems are held back. Every kind of problem has its own emoji (🧠 out of memory, 🔁 crash loop, 📦 image pull, ⏳ pending, 🖥️ node, 🔐 certificate, 💾 volume), and recoveries arrive as ✅ All clear 🎉. When a pod goes into **CrashLoopBackOff**, a short 🤖 **AI analysis** follows the alert: the likely cause, the log line that shows it, and the fix
 - **Wallboard / NOC mode** for an office TV at `/wall`: big status with Kubi, a heartbeat line, the map, a 24-hour restart view and the **top CPU and memory users of the last 24 hours** rotating, active incidents, and the whole screen turns red when something is critical. If the data goes stale, the board greys out behind a clear warning instead of showing old numbers as live
@@ -106,6 +112,11 @@ Set these in the Deployment in `kubepulse.yaml`. Every setting is optional.
 | `OPENAI_MODEL` | `gpt-4o-mini` | Model used for diagnosis |
 | `OPENAI_BASE_URL` | OpenAI | Any OpenAI-compatible chat completions API |
 | `AI_MAX_STEPS` | `8` | Maximum tool-calling rounds per diagnosis |
+| `DEPLOY_ALERTS` | `true` | Post rollouts to Mattermost, and warn when one is followed by failing pods |
+| `DIGEST` | `daily` | `daily`, `weekly` or `off` |
+| `DIGEST_TIME` | `09:00` | When to send the digest (24-hour clock) |
+| `DIGEST_DAY` | `mon` | Day for the weekly digest |
+| `DIGEST_TIMEZONE` | `UTC` | Time zone for `DIGEST_TIME`, e.g. `Asia/Kolkata` |
 | `AI_ALERTS` | `true` | Post a short AI analysis after CrashLoopBackOff alerts (needs `OPENAI_API_KEY`) |
 | `AI_ALERTS_PER_HOUR` | `10` | Most AI analyses sent per hour, so a big outage can't run up the bill |
 
@@ -113,6 +124,7 @@ Secrets go in the `kubepulse-secrets` Secret:
 
 | Key | What it does |
 |---|---|
+| `ADMIN_PASSWORD` | The admin password, set straight in the YAML (username `ADMIN_USER`, default `admin`) |
 | `KUBEPULSE_USERS` | Who can sign in: `admin:password,ops:another`. Empty = a random `admin` password, printed once in the pod log (it changes on every restart) |
 | `SESSION_SECRET` | Any long random string (`openssl rand -hex 32`). Keeps people signed in when KubePulse restarts |
 | `MATTERMOST_WEBHOOK_URL` | Incoming webhook for alerts. Use **Send test message** on the Events & alerts page to check it |
@@ -192,7 +204,8 @@ docker buildx build --platform linux/amd64,linux/arm64 -t <you>/kubepulse:<tag> 
 
 ## Limitations
 
-- Trend history and the uptime score live in memory plus a small emptyDir: they survive container restarts but reset if the pod moves to another node. The 7-day trend fills in as KubePulse runs
+- Trend history, the uptime score, restarts, rollouts and the digest date are kept on a 1 GiB volume (`kubepulse-data`), so they survive restarts and the pod moving. The 7-day trend fills in as KubePulse runs
+- Rollouts are detected while KubePulse is running; a rollout that happens while it's down isn't recorded
 - One KubePulse per cluster
 - Certificate expiry comes from cert-manager only, because KubePulse doesn't read TLS Secrets
 - metrics-server is needed for CPU and memory (on by default in AKS; install it on EKS)

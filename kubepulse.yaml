@@ -19,7 +19,11 @@ metadata:
 type: Opaque
 stringData:
   OPENAI_API_KEY: ""
-  # Who can sign in: "user:password,user2:password2". Empty = a random admin password, printed in the pod log.
+  # Sign-in. Set the admin password here (the username is ADMIN_USER, "admin" by default).
+  ADMIN_USER: "admin"
+  ADMIN_PASSWORD: ""
+  # More people: "user:password,user2:password2". If no password is set anywhere, a random admin
+  # password is printed in the pod log on every start.
   KUBEPULSE_USERS: ""
   # Keeps people signed in across restarts. Any long random string, e.g. from: openssl rand -hex 32
   SESSION_SECRET: ""
@@ -90,7 +94,7 @@ spec:
         seccompProfile: { type: RuntimeDefault }
       containers:
         - name: kubepulse
-          image: christoj/kubepulse:0.9.0
+          image: christoj/kubepulse:0.10.0
           ports: [{ containerPort: 8080 }]
           envFrom:
             - secretRef: { name: kubepulse-secrets, optional: true }
@@ -109,6 +113,16 @@ spec:
               value: "20"
             - name: OPENAI_MODEL
               value: "gpt-4o-mini"
+            - name: DEPLOY_ALERTS         # post rollouts to Mattermost, and warn when one is followed by failing pods
+              value: "true"
+            - name: DIGEST                # daily or weekly summary to Mattermost: daily, weekly or off
+              value: "daily"
+            - name: DIGEST_TIME           # when to send it, 24-hour clock
+              value: "09:00"
+            - name: DIGEST_DAY            # for weekly: mon, tue, ...
+              value: "mon"
+            - name: DIGEST_TIMEZONE       # e.g. Asia/Kolkata, Asia/Dubai, UTC
+              value: "Asia/Kolkata"
             - name: AI_ALERTS             # short AI analysis after CrashLoopBackOff alerts (needs OPENAI_API_KEY)
               value: "true"
             - name: AI_ALERTS_PER_HOUR    # budget, so a big outage can't run up the AI bill
@@ -142,9 +156,20 @@ spec:
           volumeMounts:
             - { name: data, mountPath: /data }
       volumes:
-        # Restart timeline and daily uptime survive container restarts
+        # Trends, uptime, restart history, rollouts and the digest date, kept across restarts and pod moves
         - name: data
-          emptyDir: { sizeLimit: 16Mi }
+          persistentVolumeClaim: { claimName: kubepulse-data }
+---
+# A small disk so KubePulse's history survives the pod moving to another node. Uses the default StorageClass.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: kubepulse-data
+  namespace: kubepulse
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests: { storage: 1Gi }
 ---
 apiVersion: v1
 kind: Service
