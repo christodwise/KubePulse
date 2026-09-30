@@ -510,6 +510,37 @@
   section.enter > *:nth-child(n+5), section.enter .hero > *:nth-child(n+5), section.enter .ins-grid > *:nth-child(n+5), section.enter .ncards > *:nth-child(n+5) { animation-delay: .2s; }
   .card:hover { box-shadow: var(--shadow-lift); }
 
+  /* Resource utilization: used against request and limit */
+  .util { display: inline-grid; gap: 3px; min-width: 132px; text-align: left; vertical-align: middle; }
+  .util .u { font-weight: 600; font-size: 13px; }
+  .util .r { display: grid; grid-template-columns: 26px 1fr 38px; gap: 6px; align-items: center; font-size: 11px; color: var(--muted); }
+  .util .r .ub { height: 4px; border-radius: 4px; background: var(--fill); overflow: hidden; }
+  .util .r .ub i { display: block; height: 100%; border-radius: 4px; background: var(--brand); }
+  .util .r .ub i.warn { background: var(--warn-fill); } .util .r .ub i.bad { background: var(--bad-fill); }
+  .util .r b { font-weight: 600; color: var(--ink); text-align: right; }
+  .util .r b.hot { color: var(--bad); }
+  .util .none { font-size: 11px; color: var(--faint); }
+  .resgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .rescard { background: var(--surface-2); border: 1px solid var(--line); border-radius: 16px; padding: 14px 16px; }
+  .rescard h4 { margin: 0 0 2px; font-size: 12px; font-weight: 600; color: var(--muted); }
+  .rescard .big { font-size: 24px; font-weight: 700; letter-spacing: -.02em; }
+  .rescard .util { width: 100%; margin-top: 8px; }
+  .rescard .util .r { grid-template-columns: 50px 1fr 44px; font-size: 12px; }
+  .rescard .util .r .ub { height: 6px; }
+  .rescard .peak { margin-top: 8px; font-size: 12px; color: var(--muted); }
+  /* Wallboard: top resources page */
+  .wb-top { display: grid; grid-template-columns: 1fr 1fr; gap: 26px; height: 100%; }
+  .wb-top h3 { margin: 0 0 12px; font-size: 16px; font-weight: 600; color: var(--muted); }
+  .wb-trow { display: grid; grid-template-columns: minmax(0, 1fr) 150px 70px; gap: 14px; align-items: center; padding: 11px 0; border-top: 1px solid var(--line); }
+  .wb-trow .n { font-size: 17px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .wb-trow .n small { display: block; font-size: 13px; color: var(--muted); font-weight: 400; }
+  .wb-trow .ub { height: 8px; border-radius: 8px; background: var(--fill); overflow: hidden; }
+  .wb-trow .ub i { display: block; height: 100%; border-radius: 8px; background: var(--brand); }
+  .wb-trow .ub i.warn { background: var(--warn-fill); } .wb-trow .ub i.bad { background: var(--bad-fill); }
+  .wb-trow .ul { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .wb-trow .v { font-size: 20px; font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; }
+  @media (max-width: 760px) { .resgrid { grid-template-columns: 1fr; } }
+
   /* Keyboard help */
   .kbd-help { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; background: rgba(0, 0, 0, .2); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
   .kbd-help .card { padding: 22px 26px; min-width: 340px; animation: rise .5s var(--spring) both; background: var(--glass-strong); }
@@ -722,7 +753,7 @@
         <button class="btn" id="copyLink" title="Copy a link to this exact view"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M6.5 9.5l3-3M7 4.5l1-1a2.8 2.8 0 0 1 4 4l-1 1M9 11.5l-1 1a2.8 2.8 0 0 1-4-4l1-1"/></svg>Copy link</button>
       </div>
       <div class="card tablewrap"><table>
-        <thead><tr><th>Pod</th><th>Status</th><th>Ready</th><th class="num">Restarts</th><th class="num">CPU</th><th class="num">Memory</th><th class="num">Age</th></tr></thead>
+        <thead><tr><th>Pod</th><th>Status</th><th>Ready</th><th class="num">Restarts</th><th>CPU (used · of request · of limit)</th><th>Memory (used · of request · of limit)</th><th class="num">Age</th></tr></thead>
         <tbody id="podRows"></tbody></table></div>
     </section>
 
@@ -980,6 +1011,16 @@ const podAttrs = (ns, name) => `data-ns="${esc(ns)}" data-name="${esc(name)}"`;
 const fmtAge = (s) => s == null ? "" : s < 120 ? s + "s" : s < 7200 ? Math.floor(s/60) + "m" : s < 172800 ? Math.floor(s/3600) + "h" : Math.floor(s/86400) + "d";
 const fmtCpu = (c) => c == null ? "" : c >= 10 ? c.toFixed(1) : c >= 1 ? c.toFixed(2) : Math.round(c * 1000) + "m";
 const fmtMem = (b) => { if (b == null) return ""; const mi = b / 1048576; return mi >= 1024 ? (mi/1024).toFixed(1) + "Gi" : Math.round(mi) + "Mi"; };
+// "180m" plus "req 90%" and "lim 36%" bars. Over 100% of the request is normal; near the limit is not.
+function util(used, req, lim, fmt, big) {
+  if (used == null) return '<span class="muted">–</span>';
+  const row = (label, total) => {
+    if (!total) return `<div class="r"><span>${label}</span><span class="none">not set</span><span></span></div>`;
+    const pc = used / total * 100, cls = label.startsWith("lim") ? pctLevel(pc) : "";
+    return `<div class="r"><span>${label}</span><span class="ub"><i class="${cls}" style="width:${Math.min(100, pc)}%"></i></span><b class="${cls === "bad" ? "hot" : ""}">${pc < 10 ? pc.toFixed(1) : Math.round(pc)}%</b></div>`;
+  };
+  return `<div class="util">${big ? "" : `<span class="u">${fmt(used)}</span>`}${row(big ? "request" : "req", req)}${row(big ? "limit" : "lim", lim)}</div>`;
+}
 const pctLevel = (p) => p >= 90 ? "bad" : p >= 75 ? "warn" : "";
 const lvlClass = (l) => ({ ok: "ok-c", warn: "warn-c", bad: "bad-c" }[l] || "muted-c");
 const timeStr = (iso, sec) => new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", ...(sec ? { second: "2-digit" } : {}) });
@@ -1151,8 +1192,8 @@ function renderPods() {
       <td><span class="tag ${lvlClass(p.level === "ok" ? "ok" : p.level)}">${esc(p.status)}</span>${p.attention && p.kind !== "failing" && p.kind !== "pending" ? `<span class="why ${p.kind === "restarted" ? "" : lvlClass(p.level)}">${esc(p.attention)}</span>` : ""}</td>
       <td>${esc(p.ready)}</td>
       <td class="num ${p.restarts ? "hot" : "muted"}">${p.restarts}</td>
-      <td class="num">${fmtCpu(p.cpu) || '<span class="muted">–</span>'}</td>
-      <td class="num">${fmtMem(p.mem) || '<span class="muted">–</span>'}</td>
+      <td>${util(p.cpu, p.cpuReq, p.cpuLimit, fmtCpu)}</td>
+      <td>${util(p.mem, p.memReq, p.memLimit, fmtMem)}</td>
       <td class="num muted">${fmtAge(p.age)}</td></tr>`).join("")
     || `<tr><td colspan="7" class="empty">${onlyBad ? mascot("celebrate", 90) + "<b>All clear</b>No pod needs attention." : "No pods match this search."}</td></tr>`;
 }
@@ -1461,10 +1502,19 @@ function renderWall(s) {
       <div class="wb-stat"><b>${s.restartsHour}</b><span>Restarts, last hour</span></div></div>`;
 
   // Centre panel rotates between the live map and a 24-hour view
-  $("wbCenterTitle").textContent = wbPage ? "Last 24 hours" : `Cluster map · ${plural(data.pods.length, "pod")}`;
-  $("wbDots").innerHTML = `<i class="${wbPage ? "" : "on"}"></i><i class="${wbPage ? "on" : ""}"></i>`;
+  $("wbCenterTitle").textContent = [`Cluster map · ${plural(data.pods.length, "pod")}`, "Last 24 hours", "Top resources · last 24 hours"][wbPage];
+  $("wbDots").innerHTML = [0, 1, 2].map((i) => `<i class="${i === wbPage ? "on" : ""}"></i>`).join("");
   $("wbMap").hidden = !!wbPage; $("wbTrends").hidden = !wbPage;
-  if (wbPage) {
+  if (wbPage === 2) {
+    const top = data.insights?.top24 || {};
+    const list = (title, rows, fmt) => `<div><h3>${title}</h3>${(rows || []).slice(0, 7).map((r) => {
+      const base = r.limit || r.req, pc = base ? r.peak / base * 100 : null, lvl = r.limit ? pctLevel(pc) : "";
+      return `<div class="wb-trow"><div class="n" title="${esc(r.name)}">${esc(r.owner ? ownerName(r.owner) : r.name)}<small>${esc(r.namespace)} · ${esc(r.name.slice(-5))} · now ${fmt(r.now)}</small></div>
+        <div>${pc != null ? `<div class="ub"><i class="${lvl}" style="width:${Math.min(100, pc)}%"></i></div><div class="ul">${Math.round(pc)}% of ${r.limit ? "limit" : "request"}</div>` : '<div class="ul">no request or limit</div>'}</div>
+        <div class="v">${fmt(r.peak)}</div></div>`;
+    }).join("") || '<div class="muted">Collecting usage…</div>'}</div>`;
+    $("wbTrends").innerHTML = `<div class="wb-top">${list("CPU · peak", top.cpu, fmtCpu)}${list("Memory · peak", top.mem, fmtMem)}</div>`;
+  } else if (wbPage) {
     const tl = data.insights?.timeline, total = tl ? tl.restarts.reduce((a, b) => a + b, 0) : 0;
     $("wbTrends").innerHTML = `<div class="muted" style="font-size:14px;margin-bottom:6px">Restarts · ${plural(total, "restart")} in 24h</div>${timelineSvg(tl, true)}
       <div class="offenders" style="margin-top:18px">${offendersHtml(4)}</div>`;
@@ -1526,7 +1576,7 @@ function setWall(on) {
   if (on) {
     tickClock(); clock = setInterval(tickClock, 1000);
     wbPage = 0;
-    rotTimer = setInterval(() => { wbPage = (wbPage + 1) % 2; if (data) renderWall(summary()); }, 20000);
+    rotTimer = setInterval(() => { wbPage = (wbPage + 1) % 3; if (data) renderWall(summary()); }, 20000);
     if (!document.fullscreenElement) document.documentElement.requestFullscreen?.().catch(() => {});
     if (data) renderWall(summary());
   } else if (document.fullscreenElement) document.exitFullscreen();
@@ -1761,6 +1811,14 @@ function renderPodOverview() {
       <div><span>Owner</span><b title="${esc(d.owner)}">${esc(d.owner || "–")}</b></div><div><span>Pod IP</span><b>${esc(d.ip || "–")}</b></div>
       <div><span>CPU · memory now</span><b>${fmtCpu(d.usage?.cpu) || "–"} · ${fmtMem(d.usage?.mem) || "–"}</b></div><div><span>Age</span><b>${fmtAge(d.age)}</b></div>
     </div>
+    ${(() => {
+      const row = data.pods.find((x) => x.namespace === d.namespace && x.name === d.name) || {};
+      const pk = (key) => (data.insights?.top24?.[key] || []).find((x) => x.namespace === d.namespace && x.name === d.name);
+      const card = (title, used, req, lim, fmt, key) => `<div class="rescard"><h4>${title}</h4><div class="big">${used != null ? fmt(used) : "–"}</div>
+        <div class="muted" style="font-size:12px">request ${req ? fmt(req) : "not set"} · limit ${lim ? fmt(lim) : "not set"}</div>
+        ${util(used, req, lim, fmt, true)}${pk(key) ? `<div class="peak">Peak in 24h: <b>${fmt(pk(key).peak)}</b> · ${fmtAge(pk(key).peakAgo)} ago</div>` : ""}</div>`;
+      return `<div class="sec">Resources</div><div class="resgrid">${card("CPU", row.cpu, row.cpuReq, row.cpuLimit, fmtCpu, "cpu")}${card("Memory", row.mem, row.memReq, row.memLimit, fmtMem, "mem")}</div>`;
+    })()}
     <div class="sec">Containers</div>
     ${d.containers.map((c) => {
       const lvl = c.state.phase === "running" ? (c.ready ? "ok" : "warn") : c.state.phase === "terminated" && !c.state.exitCode ? "muted" : "bad";

@@ -36,7 +36,8 @@ def pod(ns, name, node, app, state=None, last=None, restarts=0, ready=True, imag
               "state": state or {"running": {"startedAt": ts(3600)}}}
     if last:
         status["lastState"] = {"terminated": last}
-    container = {"name": "app", "image": image, "resources": {"requests": {"cpu": req[0], "memory": req[1]}, "limits": {"memory": limit}},
+    container = {"name": "app", "image": image, "resources": {"requests": {"cpu": req[0], "memory": req[1]},
+                 "limits": {"memory": limit, **({"cpu": "2" if req[0] == "1500m" else "300m"} if hash(name) % 4 else {})}},
                  "readinessProbe": {"httpGet": {"path": "/healthz", "port": 8080}, "periodSeconds": 10}}
     if configmap:
         container["envFrom"] = [{"configMapRef": {"name": configmap}}]

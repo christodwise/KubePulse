@@ -23,6 +23,7 @@ Kubernetes. The screenshots use demo data.
 - Health score, cluster CPU / memory / pod trends, and a list of what needs attention right now
 - **Kubi**, a little robot IT engineer with glowing yellow eyes and a headset, has an expression for every moment: grinning when the cluster is healthy, sweating when it's degraded, panicking when it's critical, asleep when data is stale, celebrating when all is clear, and thinking or typing away while he diagnoses a pod
 - A **cluster map**: every node as a card, every pod as a dot, coloured by status; failing pods breathe red
+- **Resource utilization per pod**: CPU and memory used, shown as a percentage of the pod's request and of its limit, in the pods table and the pod panel (with the 24-hour peak)
 - Pods, Nodes and Events pages with search and filters. The URL keeps your filters, so `/#pods?ns=prod&problems=1` is a link you can share
 
 **Understand why a pod is failing**
@@ -37,7 +38,7 @@ Kubernetes. The screenshots use demo data.
 
 **Get told when something breaks**
 - **Mattermost alerts** for failing pods, pods stuck pending or not ready, OOM kills, nodes going NotReady, certificates about to expire, volumes filling up, and recoveries. Each problem alerts once; flapping problems are held back. Every kind of problem has its own emoji (🧠 out of memory, 🔁 crash loop, 📦 image pull, ⏳ pending, 🖥️ node, 🔐 certificate, 💾 volume), and recoveries arrive as ✅ All clear 🎉. When a pod goes into **CrashLoopBackOff**, a short 🤖 **AI analysis** follows the alert: the likely cause, the log line that shows it, and the fix
-- **Wallboard / NOC mode** for an office TV at `/wall`: big status with Kubi, a heartbeat line, the map and a 24-hour view that rotate, active incidents, and the whole screen turns red when something is critical. If the data goes stale, the board greys out behind a clear warning instead of showing old numbers as live
+- **Wallboard / NOC mode** for an office TV at `/wall`: big status with Kubi, a heartbeat line, the map, a 24-hour restart view and the **top CPU and memory users of the last 24 hours** rotating, active incidents, and the whole screen turns red when something is critical. If the data goes stale, the board greys out behind a clear warning instead of showing old numbers as live
 - Optional **sound**: a monitor beep when a pod starts failing, a flatline when a node goes down, a chime when everything recovers. Browsers only allow audio after a click, so after a reload the wallboard shows *Tap to enable sound*
 
 **Signed in, except the TV**

@@ -258,6 +258,7 @@ def pod_row(p, usage=(None, None)):
         "memLimit": sum(parse_mem(c.get("resources", {}).get("limits", {}).get("memory")) for c in containers) or None,
         "claims": [v["persistentVolumeClaim"]["claimName"] for v in spec.get("volumes", []) or [] if "persistentVolumeClaim" in v],
         "cpuReq": sum(parse_cpu(c.get("resources", {}).get("requests", {}).get("cpu")) for c in containers) or None,
+        "cpuLimit": sum(parse_cpu(c.get("resources", {}).get("limits", {}).get("cpu")) for c in containers) or None,
         "memReq": sum(parse_mem(c.get("resources", {}).get("requests", {}).get("memory")) for c in containers) or None,
         "lastReason": last_reason,
         "lastExitAge": last_exit_age,
@@ -384,6 +385,7 @@ class Insights:
         self.timeline = {}   # bucket start -> [restarts, crashes, oomkills]
         self.days = {}       # "YYYY-MM-DD" -> [sum of healthy %, samples]
         self.usage = {}      # (ns, pod) -> [cpu average, memory peak, samples]
+        self.peak = {}       # (ns, pod) -> {"cpu": (value, when), "mem": (value, when)}, highest in the last 24 hours
         self.created = {}    # (ns, owner) -> {pod: created at}
         self.ended = {}      # (ns, owner) -> [(created at, ended at)]
         self.prev = None     # (ns, pod) -> (restarts, level)
@@ -459,6 +461,18 @@ class Insights:
         for k in set(self.usage) - set(cur):
             del self.usage[k]
 
+        # Highest CPU and memory per pod in the last 24 hours (a peak older than that is replaced by the current value)
+        for k, p in cur.items():
+            if p["cpu"] is None:
+                continue
+            pk = self.peak.setdefault(k, {})
+            for key, val in (("cpu", p["cpu"]), ("mem", p["mem"])):
+                old = pk.get(key)
+                if old is None or val >= old[0] or now - old[1] > 86400:
+                    pk[key] = (val, now)
+        for k in set(self.peak) - set(cur):
+            del self.peak[k]
+
         # Pod churn per workload: which pods were created, and how long ended ones lived
         for p in pods:
             if p["owner"] and p["age"] is not None:
@@ -491,12 +505,26 @@ class Insights:
             "uptime": [{"day": d, "score": round(s / n, 2)} for d, (s, n) in sorted(self.days.items())[-7:]],
             "waste": self._waste(pods),
             "churn": self._churn(pods, now),
+            "top24": self._top24(cur, now),
         }
 
         snap["certs"] = self.certs
         snap["pvcs"] = self.pvcs
         snap["pvcStats"] = PVC_STATS
         snap["volumeSource"] = VOLUME_SOURCE["name"]
+
+    def _top24(self, cur, now, n=8):
+        """The pods with the highest CPU and memory in the last 24 hours, with their requests and limits."""
+        out = {}
+        for key, req, lim in (("cpu", "cpuReq", "cpuLimit"), ("mem", "memReq", "memLimit")):
+            rows = []
+            for k, pk in self.peak.items():
+                if key in pk and k in cur:
+                    p = cur[k]
+                    rows.append({"namespace": k[0], "name": k[1], "owner": p["owner"], "peak": pk[key][0], "peakAgo": int(now - pk[key][1]),
+                                 "now": p[key], "req": p[req], "limit": p[lim]})
+            out[key] = sorted(rows, key=lambda r: -r["peak"])[:n]
+        return out
 
     def _timeline(self, now):
         start = int((now - 86400) // self.BUCKET * self.BUCKET) + self.BUCKET
@@ -1463,7 +1491,7 @@ ALERTS = Alerter()
 # ---------- Background poller and snapshot store ----------
 
 WALL_POD_FIELDS = ("namespace", "name", "node", "status", "level", "kind", "attention", "stateAge",
-                   "restarts", "lastReason", "lastExitAge", "cpu", "mem", "cpuReq", "memLimit", "owner")
+                   "restarts", "lastReason", "lastExitAge", "cpu", "mem", "cpuReq", "cpuLimit", "memReq", "memLimit", "owner")
 
 
 def wallboard_view(snap):
@@ -1472,7 +1500,7 @@ def wallboard_view(snap):
         **{k: snap.get(k) for k in ("generatedAt", "pollSeconds", "clusterName", "metricsAvailable", "cluster", "error", "history")},
         "nodes": snap["nodes"],
         "pods": [{k: p.get(k) for k in WALL_POD_FIELDS} for p in snap["pods"]],
-        "insights": {"timeline": (snap.get("insights") or {}).get("timeline")},
+        "insights": {k: (snap.get("insights") or {}).get(k) for k in ("timeline", "top24")},
         "public": True,
     }
 
