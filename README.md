@@ -43,7 +43,7 @@ Kubernetes. The screenshots use demo data.
 **A daily or weekly digest in Mattermost** 📬: uptime, restarts (and which workloads), rollouts, what's broken right now, certificates and volumes running out, the busiest pods, and waste worth fixing. Sent at `DIGEST_TIME` in `DIGEST_TIMEZONE`; **Send today's digest now** on the Events & alerts page
 
 **Get told when something breaks**
-- **Mattermost alerts** for failing pods, pods stuck pending or not ready, OOM kills, nodes going NotReady, certificates about to expire, volumes filling up, and recoveries. Each problem alerts once; flapping problems are held back. Every kind of problem has its own emoji (🧠 out of memory, 🔁 crash loop, 📦 image pull, ⏳ pending, 🖥️ node, 🔐 certificate, 💾 volume), and recoveries arrive as ✅ All clear 🎉. When a pod goes into **CrashLoopBackOff**, a short 🤖 **AI analysis** follows the alert: the likely cause, the log line that shows it, and the fix
+- **Mattermost alerts** for failing pods, pods stuck pending or not ready, OOM kills, nodes going NotReady, certificates about to expire, volumes filling up, and recoveries. Each problem alerts once; flapping problems are held back. Every kind of problem has its own emoji (🧠 out of memory, 🔁 crash loop, 📦 image pull, ⏳ pending, 🖥️ node, 🔐 certificate, 💾 volume), and recoveries arrive as ✅ All clear 🎉. Alerts link straight to the pod in KubePulse and use readable reasons ("Startup probe failed: /actuator/health timed out", not raw messages with pod IPs). When a pod goes into **CrashLoopBackOff** or is **OOMKilled**, a short 🤖 **AI analysis** follows the alert: the likely cause, the log line that shows it, and the fix
 - **Wallboard / NOC mode** for an office TV at `/wall`: big status with Kubi, a heartbeat line, the map, a 24-hour restart view and the **top CPU and memory users of the last 24 hours** rotating, active incidents, and the whole screen turns red when something is critical. If the data goes stale, the board greys out behind a clear warning instead of showing old numbers as live
 - Optional **sound**: a monitor beep when a pod starts failing, a flatline when a node goes down, a chime when everything recovers. Browsers only allow audio after a click, so after a reload the wallboard shows *Tap to enable sound*
 
@@ -96,7 +96,7 @@ Set these in the Deployment in `kubepulse.yaml`. Every setting is optional.
 | Variable | Default | What it does |
 |---|---|---|
 | `CLUSTER_NAME` | empty | Shown on the dashboard, wallboard and in alerts |
-| `DASHBOARD_URL` | empty | Your KubePulse URL, so alerts link straight to the pod |
+| `DASHBOARD_URL` | learned | Your KubePulse URL for links in alerts. If empty, KubePulse uses the address it was opened at by a signed-in user |
 | `NAMESPACES` | all | Comma-separated list to limit what KubePulse sees, e.g. `prod,uat` |
 | `POLL_SECONDS` | `20` | How often KubePulse reads the cluster |
 | `WALLBOARD_PUBLIC` | `true` | Serve the wallboard at `/wall` without sign-in. `false` makes it need a sign-in too |

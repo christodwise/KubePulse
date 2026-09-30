@@ -51,6 +51,11 @@ AI_ALERTS_PER_HOUR = int(env("AI_ALERTS_PER_HOUR", "10"))
 # Optional Mattermost alerts
 MATTERMOST_WEBHOOK_URL = env("MATTERMOST_WEBHOOK_URL", "").strip()
 DASHBOARD_URL = env("DASHBOARD_URL", "").strip().rstrip("/")
+LEARNED_URL = {"url": ""}   # used when DASHBOARD_URL is empty: the address a signed-in user opened KubePulse at
+
+
+def dashboard_url():
+    return DASHBOARD_URL or LEARNED_URL["url"]
 ALERT_PENDING = int(env("ALERT_PENDING_MINUTES", "3")) * 60
 ALERT_COOLDOWN = int(env("ALERT_COOLDOWN_MINUTES", "30")) * 60
 ALERT_RESOLVED = env("ALERT_RESOLVED", "true").lower() == "true"
@@ -935,8 +940,8 @@ def build_digest(snap, days):
     if waste:
         w = waste[0]
         lines.append(f"**Could free up:** {w['namespace']}/{w['owner'].split('/')[-1]} reserves far more than it uses (see Insights)")
-    if DASHBOARD_URL:
-        lines.append(f"[Open KubePulse →]({DASHBOARD_URL}/#insights)")
+    if dashboard_url():
+        lines.append(f"[Open KubePulse →]({dashboard_url()}/#insights)")
     return title + "\n" + "\n".join("- " + l if not l.startswith("[") else l for l in lines)
 
 
@@ -1513,7 +1518,7 @@ def investigate(job):
     job["finished"] = time.time()
 
 
-QUICK_PROMPT = """You are a senior Kubernetes SRE. A pod is in CrashLoopBackOff. From the pod summary, events and
+QUICK_PROMPT = """You are a senior Kubernetes SRE. A pod is crash-looping or was OOMKilled. From the pod summary, events and
 the logs of the run that crashed, reply in exactly this Markdown, at most 3 short lines, no preamble:
 **Cause:** the most likely reason, in one sentence.
 **Evidence:** one quoted log line or event, shortened if needed.
@@ -1550,6 +1555,40 @@ def job_view(job):
 
 
 # ---------- Mattermost alerts ----------
+
+_URL_RE = re.compile(r'"?https?://[^\s"/]+(/[^\s"?]*)?[^\s"]*"?')
+_IP_RE = re.compile(r"\b\d{1,3}(\.\d{1,3}){3}(:\d+)?\b")
+
+
+def fmt_bytes(b):
+    mi = (b or 0) / 1024**2
+    return f"{mi / 1024:.1f}Gi" if mi >= 1024 else f"{mi:.0f}Mi"
+
+
+def friendly_event(msg):
+    """Turn a raw Kubernetes event message into something a person can read in a chat."""
+    m = (msg or "").strip()
+    probe = re.match(r"(Startup|Liveness|Readiness) probe failed:\s*(.*)", m, re.S)
+    if probe:
+        kind, rest = probe.groups()
+        url = _URL_RE.search(rest)
+        path = url.group(1) if url else None
+        code = re.search(r"statuscode:\s*(\d+)", rest)
+        if "deadline exceeded" in rest or "Timeout" in rest:
+            why = "timed out"
+        elif "connection refused" in rest:
+            why = "connection refused, the app isn't listening yet"
+        elif code:
+            why = f"returned HTTP {code.group(1)}"
+        else:
+            why = _IP_RE.sub("", _URL_RE.sub("", rest)).strip(" :") or "failed"
+        return f"{kind} probe failed: {path + ' ' if path else ''}{why}"
+    m = _URL_RE.sub(lambda u: u.group(1) or "", m)
+    m = _IP_RE.sub("", m)
+    m = re.sub(r"\s*\((Client\.Timeout[^)]*)\)", "", m)
+    m = m.replace("context deadline exceeded", "timed out")
+    return re.sub(r"\s{2,}", " ", m).strip()[:220]
+
 
 def alert_emoji(a):
     """A picture for each kind of problem, so the channel is readable at a glance."""
@@ -1588,7 +1627,7 @@ class Alerter:
         latest = {}
         for e in reversed(snap.get("warnings") or []):   # oldest first, so the newest message wins
             if e["kind"] == "Pod":
-                latest[(e["namespace"], e["name"])] = e["message"]
+                latest[(e["namespace"], e["name"])] = friendly_event(e["message"])
         cur, oom = {}, []
         for n in snap["nodes"]:
             if not n["ready"]:
@@ -1610,7 +1649,9 @@ class Alerter:
                 reason = p["attention"] + (f" for {fmt_age(p['stateAge'])}" if stuck else "")
                 cur[("pod",) + pk] = dict(alert, reason=reason, level="bad" if p["kind"] == "failing" else "warn")
             elif p["lastReason"] == "OOMKilled" and prev is not None and p["restarts"] > prev:
-                oom.append(dict(alert, reason="OOMKilled and restarted", level="warn"))
+                use = f"{fmt_bytes(p['mem'])} of its {fmt_bytes(p['memLimit'])} limit" if p["mem"] and p["memLimit"] else ""
+                oom.append(dict(alert, reason="OOMKilled and restarted", level="warn",
+                                detail="It went over its memory limit and was restarted." + (f" Using {use} now." if use else "")))
         for pk in set(self.restarts) - seen:
             del self.restarts[pk]
         for c in snap.get("certs") or []:
@@ -1665,7 +1706,7 @@ class Alerter:
             bad = sum(1 for a in new if a["level"] == "bad")
             self.send(f"#### 🚨 {self._prefix()}Heads up! {n} new problem{'s' if n != 1 else ''} {'🔥' * min(3, max(1, bad))}", new)
             for a in new:
-                if a["kind"] == "pod" and a["reason"].startswith("CrashLoopBackOff"):
+                if a["kind"] == "pod" and (a["reason"].startswith("CrashLoopBackOff") or "OOMKilled" in a["reason"]):
                     self.analyse_later(a)
         done = [v for _, v in resolved if v["notified"]]
         if done and ALERT_RESOLVED:
@@ -1692,7 +1733,7 @@ class Alerter:
             if e.get("failing") or e["status"] == "stuck":
                 why = f"{e['failing']} of {e['pods']} pods failing" if e.get("failing") else f"not finished after 15 minutes ({e['ready']})"
                 self.send(f"#### ⚠️ {self._prefix()}Rollout of {e['namespace']}/{e['name']} looks unhealthy: {why}\nChange: " + "; ".join(e["changes"][:3])
-                          + (f"\n[Open KubePulse →]({DASHBOARD_URL}/#insights)" if DASHBOARD_URL else ""))
+                          + (f"\n[Open KubePulse →]({dashboard_url()}/#insights)" if dashboard_url() else ""))
 
     def analyse_later(self, a):
         """Post a short AI analysis for a crash-looping pod, in the background, within the hourly budget."""
@@ -1714,9 +1755,9 @@ class Alerter:
                 return
             att = {"color": "#bf5af2", "fallback": f"AI analysis for {a['title']}", "title": f"🤖 AI analysis · {a['title']}", "text": text,
                    "footer": "💜 KubePulse · AI can be wrong, check before changing production"}
-            if DASHBOARD_URL:
-                att["title_link"] = f"{DASHBOARD_URL}/#pod/{a['ns']}/{a['name']}"
-                att["text"] += f"\n[Full diagnosis in KubePulse →]({DASHBOARD_URL}/#pod/{a['ns']}/{a['name']})"
+            if dashboard_url():
+                att["title_link"] = f"{dashboard_url()}/#pod/{a['ns']}/{a['name']}"
+                att["text"] += f"\n[Full diagnosis in KubePulse →]({dashboard_url()}/#pod/{a['ns']}/{a['name']})"
             body = {"username": "KubePulse", "text": "", "attachments": [att]}
             try:
                 post_json(MATTERMOST_WEBHOOK_URL, body)
@@ -1734,8 +1775,11 @@ class Alerter:
             "fields": [{"short": True, "title": FIELD_EMOJI.get(k, "") + k, "value": v} for k, v in a["fields"].items()],
             "footer": "💜 KubePulse · Know before it breaks",
         }
-        if DASHBOARD_URL and a["kind"] == "pod" and not a.get("example"):
-            att["title_link"] = f"{DASHBOARD_URL}/#pod/{a['ns']}/{a['name']}"
+        if dashboard_url() and a["kind"] == "pod" and not a.get("example"):
+            att["title_link"] = f"{dashboard_url()}/#pod/{a['ns']}/{a['name']}"
+            att["text"] += f"\n[Open in KubePulse →]({dashboard_url()}/#pod/{a['ns']}/{a['name']})"
+        elif dashboard_url() and a["kind"] in ("cert", "pvc", "node"):
+            att["text"] += f"\n[Open in KubePulse →]({dashboard_url()}/#{'nodes' if a['kind'] == 'node' else 'insights'})"
         return att
 
     def send(self, text, alerts=()):
@@ -1926,6 +1970,10 @@ class Handler(BaseHTTPRequestHandler):
         if path in PUBLIC_PATHS or (path == "/api/wallboard" and WALLBOARD_PUBLIC):
             return True
         if self._user():
+            base = (self.headers.get("X-KubePulse-Base") or "").strip().rstrip("/")
+            if not DASHBOARD_URL and re.fullmatch(r"https?://[\w.-]+(:\d+)?(/[\w./-]*)?", base) and base != LEARNED_URL["url"]:
+                LEARNED_URL["url"] = base
+                print(f"alert links will use {base} (set DASHBOARD_URL to choose it yourself)", flush=True)
             return True
         self._send(401, json.dumps({"error": "Please sign in"}).encode(), "application/json")
         return False

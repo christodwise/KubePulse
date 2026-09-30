@@ -1032,7 +1032,7 @@ const lvlClass = (l) => ({ ok: "ok-c", warn: "warn-c", bad: "bad-c" }[l] || "mut
 const timeStr = (iso, sec) => new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", ...(sec ? { second: "2-digit" } : {}) });
 
 async function getJSON(url, opts = {}) {
-  const res = await fetch(url, { cache: "no-cache", ...opts, headers: { "X-KubePulse": "1", ...(opts.headers || {}) } });
+  const res = await fetch(url, { cache: "no-cache", ...opts, headers: { "X-KubePulse": "1", "X-KubePulse-Base": location.origin + BASE.replace(/\/$/, ""), ...(opts.headers || {}) } });
   if (res.status === 401 && !PUBLIC_WALL) showLogin();
   const body = await res.json().catch(() => ({}));
   if (!res.ok) { const e = new Error(body.error || res.statusText); e.status = res.status; throw e; }
