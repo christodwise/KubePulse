@@ -212,4 +212,4 @@ docker buildx build --platform linux/amd64,linux/arm64 -t <you>/kubepulse:<tag> 
 
 ---
 
-<p align="center">Made by the <b>Lifetrenz DevOps team</b></p>
+<p align="center">Made by Lifetrenz DevOps team ❤️</p>

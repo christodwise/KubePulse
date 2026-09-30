@@ -541,6 +541,8 @@
   .wb-trow .v { font-size: 20px; font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; }
   @media (max-width: 760px) { .resgrid { grid-template-columns: 1fr; } }
 
+  .madeby { margin-top: 36px; text-align: center; font-size: 13px; color: var(--muted); }
+
   /* Keyboard help */
   .kbd-help { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; background: rgba(0, 0, 0, .2); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
   .kbd-help .card { padding: 22px 26px; min-width: 340px; animation: rise .5s var(--spring) both; background: var(--glass-strong); }
@@ -679,7 +681,7 @@
     <div class="login-doc" id="loginDoc"><div id="loginMascot"></div></div>
     <div class="bubble" id="loginBubble">Hi! I'm Kubi 👋</div>
     <form class="login-card" id="loginForm">
-      <div class="login-brand"><span class="logo" role="img" aria-label="Lifetrenz"></span>KubePulse · Lifetrenz DevOps</div>
+      <div class="login-brand"><span class="logo" role="img" aria-label="KubePulse"></span>KubePulse</div>
       <h1>Welcome back</h1>
       <p class="tagline">Know before it breaks.</p>
       <div class="field"><input id="lu" name="username" autocomplete="username" autocapitalize="off" spellcheck="false" placeholder=" " required><label for="lu">Username</label>
@@ -695,7 +697,7 @@
 
 <div class="app">
   <aside class="side">
-    <div class="brand"><span class="logo" role="img" aria-label="Lifetrenz"></span><div><b>KubePulse</b><small>Know before it breaks.</small></div></div>
+    <div class="brand"><span class="logo" role="img" aria-label="KubePulse"></span><div><b>KubePulse</b><small>Know before it breaks.</small></div></div>
     <button class="nav" data-view="overview"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="6" height="6" rx="1.5"/><rect x="11" y="3" width="6" height="6" rx="1.5"/><rect x="3" y="11" width="6" height="6" rx="1.5"/><rect x="11" y="11" width="6" height="6" rx="1.5"/></svg><span class="lbl">Overview</span></button>
     <button class="nav" data-view="pods"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M10 2.5l6.5 3.75v7.5L10 17.5l-6.5-3.75v-7.5z"/><path d="M3.5 6.25L10 10l6.5-3.75M10 10v7.5"/></svg><span class="lbl">Pods</span><span class="badge" id="nb-pods"></span></button>
     <button class="nav" data-view="nodes"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="3" y="3.5" width="14" height="5" rx="1.5"/><rect x="3" y="11.5" width="14" height="5" rx="1.5"/><path d="M6 6h.01M6 14h.01"/></svg><span class="lbl">Nodes</span><span class="badge" id="nb-nodes"></span></button>
@@ -812,6 +814,7 @@
         <div class="card alertcard" id="alertCard"></div>
       </div>
     </section>
+    <footer class="madeby">Made by Lifetrenz DevOps team ❤️</footer>
   </main>
 </div>
 
@@ -836,7 +839,7 @@
 <div class="wb" id="wb" hidden><div class="wb-stage" id="wbStage">
   <div class="wb-stale" id="wbStale" hidden></div>
   <div class="wb-head">
-    <span class="logo" role="img" aria-label="Lifetrenz"></span>
+    <span class="logo" role="img" aria-label="KubePulse"></span>
     <div class="name"><b>KubePulse</b><small>Know before it breaks.</small></div>
     <span class="wb-cluster" id="wbCluster" hidden></span>
     <div class="grow"></div>
