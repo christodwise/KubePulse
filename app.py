@@ -416,6 +416,7 @@ class Insights:
             self.restart_log = [tuple(r) for r in state.get("restarts", []) if time.time() - r[0] < 7 * 86400]
             ROLLOUTS.load(state)
             DIGEST_SENDER.last = state.get("digestLast", "")
+            MAINT.load(state.get("maintenance"))
         except Exception:
             pass
 
@@ -427,7 +428,8 @@ class Insights:
         try:
             tmp = DATA_DIR / "state.json.tmp"
             tmp.write_text(json.dumps({"timeline": self.timeline, "days": self.days, "history": list(HISTORY),
-                                       "restarts": self.restart_log, "rollouts": ROLLOUTS.dump(), "digestLast": DIGEST_SENDER.last}))
+                                       "restarts": self.restart_log, "rollouts": ROLLOUTS.dump(), "digestLast": DIGEST_SENDER.last,
+                                       "maintenance": MAINT.dump()}))
             tmp.replace(DATA_DIR / "state.json")
         except Exception:
             pass  # no writable volume: keep it in memory only
@@ -870,6 +872,69 @@ class Rollouts:
 ROLLOUTS = Rollouts()
 
 
+# ---------- Maintenance mode: planned work, alerts paused ----------
+
+class Maintenance:
+    def __init__(self):
+        self.until = 0.0
+        self.started = 0.0
+        self.by = self.reason = ""
+        self.namespaces = []     # empty = the whole cluster
+        self.ended_pending = False   # set when a window ends, so the alerter reports what's still broken
+
+    def active(self):
+        return time.time() < self.until
+
+    def covers(self, key):
+        """Does maintenance silence this alert? key is ("pod"|"cert"|"pvc", ns, name), ("oom", ns, name) or ("node", name)."""
+        if not self.active():
+            return False
+        if not self.namespaces:
+            return True
+        return key[0] != "node" and len(key) > 2 and key[1] in self.namespaces
+
+    def covers_ns(self, ns):
+        return self.active() and (not self.namespaces or ns in self.namespaces)
+
+    def start(self, minutes, by, reason, namespaces):
+        self.started, self.until = time.time(), time.time() + minutes * 60
+        self.by, self.reason = by, reason.strip()[:200]
+        self.namespaces = sorted({n for n in namespaces if NAME_RE.match(n)})
+        self.ended_pending = False
+        scope = "the whole cluster" if not self.namespaces else ", ".join(self.namespaces)
+        when = datetime.fromtimestamp(self.until, _tz()).strftime("%H:%M")
+        ALERTS.post(f"#### 🛠️ {ALERTS._prefix()}Maintenance started by {by} until {when} ({DIGEST_TIMEZONE})\n"
+                    f"Alerts are paused for {scope}." + (f"\n> {self.reason}" if self.reason else ""))
+        INSIGHTS.save_now()
+
+    def end(self, by=None):
+        if not self.until:
+            return
+        self.until = min(self.until, time.time())
+        self.ended_pending = True
+        self.ended_by = by
+        INSIGHTS.save_now()
+
+    def view(self):
+        if not self.active():
+            return None
+        return {"until": datetime.fromtimestamp(self.until, timezone.utc).isoformat(), "left": int(self.until - time.time()),
+                "by": self.by, "reason": self.reason, "namespaces": self.namespaces}
+
+    def load(self, st):
+        st = st or {}
+        self.until, self.started = st.get("until", 0.0), st.get("started", 0.0)
+        self.by, self.reason, self.namespaces = st.get("by", ""), st.get("reason", ""), st.get("namespaces", [])
+        self.ended_pending = st.get("endedPending", False)
+
+    def dump(self):
+        return {"until": self.until, "started": self.started, "by": self.by, "reason": self.reason,
+                "namespaces": self.namespaces, "endedPending": self.ended_pending}
+
+
+MAINT = Maintenance()
+
+
 # ---------- Daily / weekly digest to Mattermost ----------
 
 def _tz():
@@ -892,6 +957,8 @@ def build_digest(snap, days):
     title = f"#### 📬 {('[' + CLUSTER_NAME + '] ') if CLUSTER_NAME else ''}KubePulse {'daily' if days == 1 else 'weekly'} digest {mood}"
 
     lines = []
+    if MAINT.active():
+        lines.append(f"**Maintenance:** on until {datetime.fromtimestamp(MAINT.until, _tz()).strftime('%H:%M')}" + (f" ({MAINT.reason})" if MAINT.reason else ""))
     if score is not None:
         extra = ""
         if days > 1 and len(up) > 1:
@@ -1682,10 +1749,30 @@ class Alerter:
                 self.send(f"#### 👋 {self._prefix()}KubePulse is on duty 🩺\n"
                           f"Found **{len(cur)} problem{'s' if len(cur) != 1 else ''}** already going on:", list(cur.values()))
             return
+        # A maintenance window just ended (or the window expired): report what is still broken
+        if MAINT.until and not MAINT.active() and (MAINT.ended_pending or MAINT.until > now - 2 * POLL_SECONDS - 60):
+            if MAINT.ended_pending or not getattr(self, "maint_reported", 0) == MAINT.until:
+                self.maint_reported = MAINT.until
+                MAINT.ended_pending = False
+                still = [v for k, v in self.active.items() if v.get("maint") and k in cur]
+                for k in list(self.active):
+                    if self.active[k].get("maint"):
+                        self.active[k]["maint"], self.active[k]["notified"] = False, k in cur
+                by = getattr(MAINT, "ended_by", None)
+                head = f"#### ✅ {self._prefix()}Maintenance is over" + (f" (ended by {by})" if by else "") + ", alerts are back on."
+                if still:
+                    self.send(head + f"\n⚠️ **{len(still)} problem{'s' if len(still) != 1 else ''} still there:**", still)
+                else:
+                    self.post(head + " Everything looks healthy 🎉")
+                MAINT.ended_by = None
+                INSIGHTS.save_now()
         new = []
         for k, v in cur.items():
             if k in self.active:
                 self.active[k].update(reason=v["reason"], detail=v["detail"])
+                continue
+            if MAINT.covers(k):
+                self.active[k] = dict(v, since=now, notified=False, maint=True)
                 continue
             notify = now - self.cooldown.get(k, 0) > ALERT_COOLDOWN
             self.active[k] = dict(v, since=now, notified=notify)
@@ -1693,6 +1780,8 @@ class Alerter:
                 new.append(v)
         for a in oom:
             k = ("oom", a["ns"], a["name"])
+            if MAINT.covers(k):
+                continue
             if now - self.cooldown.get(k, 0) > ALERT_COOLDOWN:
                 self.cooldown[k] = now
                 new.append(a)
@@ -1719,10 +1808,18 @@ class Alerter:
     def _prefix(self):
         return f"[{CLUSTER_NAME}] " if CLUSTER_NAME else ""
 
+    def post(self, text):
+        if MATTERMOST_WEBHOOK_URL:
+            self.send(text)
+
     def rollouts(self, new, snap):
         """Post new rollouts, and warn once when a finished rollout left crashing pods behind."""
         if not (MATTERMOST_WEBHOOK_URL and DEPLOY_ALERTS):
             return
+        new = [e for e in new if not MAINT.covers_ns(e["namespace"])]
+        for e in ROLLOUTS.events:
+            if not e["notified"] and MAINT.covers_ns(e["namespace"]):
+                e["notified"] = True   # rolled out during maintenance: expected, don't warn
         if new:
             lines = [f"- **{e['namespace']}/{e['name']}** ({e['kind']}): " + "; ".join(e["changes"][:3]) for e in new[:10]]
             self.send(f"#### 🚀 {self._prefix()}{'Rolling out' if len(new) == 1 else f'{len(new)} rollouts'}\n" + "\n".join(lines))
@@ -1822,7 +1919,7 @@ WALL_POD_FIELDS = ("namespace", "name", "node", "status", "level", "kind", "atte
 def wallboard_view(snap):
     """Only what the wallboard shows: no logs, events, pod specs, certificates or alert settings."""
     return {
-        **{k: snap.get(k) for k in ("generatedAt", "pollSeconds", "clusterName", "metricsAvailable", "cluster", "error", "history")},
+        **{k: snap.get(k) for k in ("generatedAt", "pollSeconds", "clusterName", "metricsAvailable", "cluster", "error", "history", "maintenance")},
         "nodes": snap["nodes"],
         "pods": [{k: p.get(k) for k in WALL_POD_FIELDS} for p in snap["pods"]],
         "insights": {k: (snap.get("insights") or {}).get(k) for k in ("timeline", "top24")},
@@ -1865,6 +1962,7 @@ def poll_loop():
             except Exception as e:
                 print(f"digest failed: {api_error(e)[1]}", flush=True)
             snap["alerts"] = ALERTS.status()
+            snap["maintenance"] = MAINT.view()
             STORE.publish(snap)
         except Exception as e:
             msg = api_error(e)[1]
@@ -2075,6 +2173,23 @@ class Handler(BaseHTTPRequestHandler):
                                                                    fresh=q.get("fresh") == "1")}))
         elif url.path == "/api/alerts/test":
             self._api(ALERTS.test)
+        elif url.path == "/api/maintenance":
+            def maintenance():
+                data = self._json_body()
+                if data.get("end"):
+                    MAINT.end(self._user())
+                else:
+                    minutes = int(data.get("minutes") or 0)
+                    if not 5 <= minutes <= 24 * 60:
+                        raise BadRequest("Pick a maintenance window between 5 minutes and 24 hours.")
+                    MAINT.start(minutes, self._user() or "someone", str(data.get("reason") or ""), data.get("namespaces") or [])
+                with STORE.lock:
+                    if STORE.snap:
+                        STORE.snap["maintenance"] = MAINT.view()
+                if STORE.snap:
+                    STORE.publish(STORE.snap)
+                return json.dumps({"maintenance": MAINT.view()})
+            self._api(maintenance)
         elif url.path == "/api/digest/test":
             def send_digest():
                 if not MATTERMOST_WEBHOOK_URL:

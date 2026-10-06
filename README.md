@@ -47,6 +47,11 @@ Kubernetes. The screenshots use demo data.
 - **Wallboard / NOC mode** for an office TV at `/wall`: big status with Kubi, a heartbeat line, the map, a 24-hour restart view and the **top CPU and memory users of the last 24 hours** rotating, active incidents, and the whole screen turns red when something is critical. If the data goes stale, the board greys out behind a clear warning instead of showing old numbers as live
 - Optional **sound**: a monitor beep when a pod starts failing, a flatline when a node goes down, a chime when everything recovers. Browsers only allow audio after a click, so after a reload the wallboard shows *Tap to enable sound*
 
+**Maintenance mode** 🛠️
+- Start it from the sidebar for 30 minutes to 8 hours (or until a set time), for the whole cluster or chosen namespaces, with a reason
+- While it's on: no alerts, rollout warnings, AI analyses or sounds for anything in scope; a banner on every page; a calm purple wallboard instead of red
+- Mattermost is told when it starts and ends. When it ends, anything still broken is reported; problems that fixed themselves during the window aren't
+
 **Signed in, except the TV**
 - A sign-in page protects everything: pods, logs, events and diagnosis. It's a single clean card with Kubi peeking over the top: he greets you, covers his eyes while you type your password, looks sad when it's wrong and celebrates when you're in.
 

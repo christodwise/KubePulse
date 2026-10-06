@@ -545,6 +545,31 @@
   .login-madeby { position: absolute; left: 0; right: 0; bottom: 22px; margin: 0; }
   @media (max-height: 700px) { .login-madeby { position: static; margin-top: 18px; } }
 
+  /* Maintenance mode */
+  .maint-banner { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; padding: 12px 16px; border-radius: 16px;
+                  background: color-mix(in srgb, #5e5ce6 12%, var(--glass)); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur);
+                  border: 1px solid color-mix(in srgb, #5e5ce6 30%, transparent); font-size: 13.5px; }
+  .maint-banner .ic { font-size: 22px; }
+  .maint-banner b { font-weight: 600; }
+  .maint-banner .muted { font-size: 12.5px; }
+  .maint-banner .grow { flex: 1; }
+  .btn.maintbtn { width: 100%; justify-content: center; margin: 0 2px 8px; }
+  .modal { position: fixed; inset: 0; z-index: 70; display: grid; place-items: center; padding: 20px; background: rgba(0, 0, 0, .25);
+           -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+  .modal .card { width: min(460px, 100%); padding: 24px; background: var(--glass-strong); animation: rise .45s var(--spring) both; }
+  .modal h3 { margin: 0 0 4px; font-size: 19px; font-weight: 700; letter-spacing: -.02em; }
+  .modal p { margin: 0 0 16px; color: var(--muted); font-size: 13.5px; }
+  .modal label.l { display: block; font-size: 12px; font-weight: 600; color: var(--muted); margin: 14px 0 6px; }
+  .pickrow { display: flex; flex-wrap: wrap; gap: 6px; }
+  .pick { border: 0; background: var(--fill); border-radius: 980px; padding: 6px 13px; font-size: 13px; font-weight: 500; }
+  .pick[aria-pressed="true"] { background: var(--brand); color: #fff; }
+  .modal input[type=text], .modal input[type=time] { width: 100%; height: 40px; padding: 0 12px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--surface); font-size: 14px; }
+  .modal .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+  .wb .wb-maint { position: absolute; left: 50%; top: 22px; transform: translateX(-50%); z-index: 3; padding: 10px 22px; border-radius: 999px; font-size: 18px; font-weight: 600;
+                  background: rgba(94, 92, 230, .25); border: 1px solid rgba(94, 92, 230, .6); color: #e5e4ff; white-space: nowrap; }
+  .wb.maint::after { opacity: 0 !important; animation: none !important; }
+  .wb.maint { background: radial-gradient(1200px 700px at 10% -10%, rgba(94, 92, 230, .25), transparent 60%), #05040c !important; }
+
   /* Keyboard help */
   .kbd-help { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; background: rgba(0, 0, 0, .2); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
   .kbd-help .card { padding: 22px 26px; min-width: 340px; animation: rise .5s var(--spring) both; background: var(--glass-strong); }
@@ -709,6 +734,7 @@
     <div class="grow"></div>
     <div class="alertchip" id="alertChip"><span class="dot"></span><div><b>Alerts off</b>Mattermost not set</div></div>
     <div class="userchip" id="userChip" hidden><span class="avatar" id="userAvatar"></span><div><b id="userName"></b>Signed in</div><button class="linkbtn" id="signOut">Sign out</button></div>
+    <button class="btn maintbtn" id="maintBtn" title="Pause alerts during planned work">🛠️ Maintenance</button>
     <div class="side-actions">
       <button class="btn wbbtn" id="openWall" title="Fullscreen wallboard for a TV"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1.5" y="2.5" width="13" height="9" rx="1.5"/><path d="M5.5 14h5"/></svg>Wallboard</button>
       <button class="btn icon" id="sound" aria-pressed="false" title="Sound alerts (s)"></button>
@@ -841,6 +867,7 @@
 <!-- Wallboard -->
 <div class="wb" id="wb" hidden><div class="wb-stage" id="wbStage">
   <div class="wb-stale" id="wbStale" hidden></div>
+  <div class="wb-maint" id="wbMaint" hidden></div>
   <div class="wb-head">
     <span class="logo" role="img" aria-label="KubePulse"></span>
     <div class="name"><b>KubePulse</b><small>Know before it breaks.</small></div>
@@ -860,6 +887,24 @@
   </div>
   <div class="wb-foot" id="wbFoot"></div>
 </div></div>
+
+<div class="modal" id="maintModal" hidden><form class="card" id="maintForm">
+  <h3>🛠️ Start maintenance</h3>
+  <p>Alerts, rollout warnings and sounds pause for the window. When it ends, Mattermost gets a list of anything still broken.</p>
+  <label class="l">How long</label>
+  <div class="pickrow" id="maintDur">
+    <button type="button" class="pick" data-min="30">30 min</button><button type="button" class="pick" data-min="60" aria-pressed="true">1 hour</button>
+    <button type="button" class="pick" data-min="120">2 hours</button><button type="button" class="pick" data-min="240">4 hours</button>
+    <button type="button" class="pick" data-min="480">8 hours</button><button type="button" class="pick" data-min="until">Until…</button>
+  </div>
+  <input type="time" id="maintUntil" hidden style="margin-top:8px">
+  <label class="l">Which namespaces</label>
+  <div class="pickrow" id="maintNs"></div>
+  <label class="l" for="maintReason">Reason (optional)</label>
+  <input type="text" id="maintReason" maxlength="200" placeholder="e.g. Upgrading the cluster to 1.31">
+  <div class="login-err" id="maintErr"></div>
+  <div class="actions"><button type="button" class="btn" id="maintCancel">Cancel</button><button type="submit" class="btn primary" id="maintStart">Start maintenance</button></div>
+</form></div>
 
 <div class="kbd-help" id="kbdHelp" hidden><div class="card"><h3>Keyboard shortcuts</h3>
   <div class="k"><span>Search pods</span><kbd>/</kbd></div><div class="k"><span>Problems only</span><kbd>p</kbd></div>
@@ -1125,7 +1170,12 @@ function renderShell(s) {
     : `<span class="dot muted-c"></span><div><b>Alerts off</b>Mattermost not set</div>`;
   paintFreshness();
   $("viewSub").textContent = data.clusterName ? `${data.clusterName} · ${plural(data.nodes.length, "node")} · ${plural(data.pods.length, "pod")}` : `${plural(data.nodes.length, "node")} · ${plural(data.pods.length, "pod")}`;
-  $("notes").innerHTML = (data.error ? `<div class="note">Can't reach the Kubernetes API right now: ${esc(data.error)}</div>` : "")
+  const m = data.maintenance;
+  $("maintBtn").hidden = !!m;
+  if (m) $("alertChip").innerHTML = `<span class="dot pulse" style="--cf:#5e5ce6"></span><div><b>Maintenance</b>Alerts paused until ${timeStr(m.until)}</div>`;
+  $("notes").innerHTML = (m ? `<div class="maint-banner"><span class="ic">🛠️</span><div><b>Maintenance until ${timeStr(m.until)}</b> (${fmtAge(m.left)} left) · alerts paused for ${m.namespaces.length ? esc(m.namespaces.join(", ")) : "the whole cluster"}
+      <div class="muted">${m.reason ? esc(m.reason) + " · " : ""}started by ${esc(m.by)}</div></div><span class="grow"></span><button class="btn" id="maintEnd">End now</button></div>` : "")
+    + (data.error ? `<div class="note">Can't reach the Kubernetes API right now: ${esc(data.error)}</div>` : "")
     + (data.metricsAvailable ? "" : '<div class="note">CPU and memory usage are unavailable because metrics-server is not responding.</div>');
 }
 
@@ -1501,13 +1551,19 @@ function renderEvents() {
 function renderWall(s) {
   $("wbStage").style.setProperty("--s", Math.min(innerWidth / 1920, innerHeight / 1080));
   $("wbCluster").hidden = !data.clusterName; $("wbCluster").textContent = data.clusterName;
-  $("wb").classList.toggle("critical", s.state === "bad");
+  const m = data.maintenance, calm = m && !m.namespaces.length;
+  $("wb").classList.toggle("critical", s.state === "bad" && !calm);
+  $("wb").classList.toggle("maint", !!calm);
+  $("wbMaint").hidden = !m;
+  $("wbEcg").style.visibility = m ? "hidden" : "";
+  if (m) $("wbMaint").textContent = `🛠️ Maintenance until ${timeStr(m.until)}${m.namespaces.length ? " · " + m.namespaces.join(", ") : ""}${m.reason ? " · " + m.reason : ""}`;
   $("wbEcg").className = "ecg " + lvlClass(s.state);
-  $("wbStatus").className = `panel wb-status ${lvlClass(s.state)} ${s.state === "bad" ? "alarm" : ""}`;
+  $("wbStatus").className = `panel wb-status ${lvlClass(s.state)} ${s.state === "bad" && !calm ? "alarm" : ""}`;
+  $("wbStatus").style.cssText = calm ? "--c:#bfbfff;--cf:#7d7aff" : "";
   const stale = data && freshness().stale;
-  $("wbStatus").innerHTML = `<div class="ring">${ring(s.healthyPct, 250, 16)}<div class="mid">${mascot(stale ? "sleep" : MOOD[s.state], 160)}</div></div>
+  $("wbStatus").innerHTML = `<div class="ring">${ring(s.healthyPct, 250, 16)}<div class="mid">${mascot(stale ? "sleep" : calm ? "working" : MOOD[s.state], 160)}</div></div>
     <div style="font-size:22px;color:var(--muted);margin-top:10px"><b style="color:var(--ink);font-weight:600">${Math.floor(s.healthyPct)}%</b> of pods healthy</div>
-    <div class="wb-word">${s.word}</div><div class="wb-line">${esc(s.line)}</div>
+    <div class="wb-word" ${calm ? 'style="color:#bfbfff"' : ""}>${calm ? "Maintenance" : s.word}</div><div class="wb-line">${esc(s.line)}</div>
     <div class="wb-stats"><div class="wb-stat"><b>${s.ready}<span style="font-size:20px;color:var(--muted)">/${data.nodes.length}</span></b><span>Nodes ready</span></div>
       <div class="wb-stat"><b>${data.pods.filter((p) => p.status === "Running").length}</b><span>Pods running</span></div>
       <div class="wb-stat"><b class="${s.att.length ? "hot" : ""}">${s.att.length}</b><span>Need attention</span></div>
@@ -1672,7 +1728,7 @@ function setSound(on) {
   updateSoundUi();
 }
 function playTransitions(prev, next) {
-  if (!soundOn || !prev) return;
+  if (!soundOn || !prev || next.maintenance) return;
   const downBefore = new Set(prev.nodes.filter((n) => !n.ready).map((n) => n.name));
   const badBefore = new Set(prev.pods.filter((p) => p.level === "bad").map((p) => p.namespace + "/" + p.name));
   if (next.nodes.some((n) => !n.ready && !downBefore.has(n.name))) return SOUNDS.flatline();
@@ -1985,7 +2041,7 @@ document.addEventListener("click", (e) => {
 });
 function toggleOnlyBad() { onlyBad = !onlyBad; $("onlyBad").setAttribute("aria-pressed", onlyBad); syncUrl(); data && renderPods(); }
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") { if (!$("kbdHelp").hidden) $("kbdHelp").hidden = true; else if (drawer) closeDrawer(); else if (wall) setWall(false); return; }
+  if (e.key === "Escape") { if (!$("maintModal").hidden) $("maintModal").hidden = true; else if (!$("kbdHelp").hidden) $("kbdHelp").hidden = true; else if (drawer) closeDrawer(); else if (wall) setWall(false); return; }
   if (e.key === "Enter" && e.target.matches(".row.link")) return e.target.click();
   if (/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName) || e.metaKey || e.ctrlKey || e.altKey) return;
   const k = e.key;
@@ -2007,6 +2063,52 @@ $("copyLink").addEventListener("click", (e) => {
   syncUrl();
   navigator.clipboard?.writeText(location.href).then(() => { e.currentTarget.lastChild.textContent = "Link copied"; setTimeout(() => $("copyLink").lastChild.textContent = "Copy link", 1800); });
 });
+// ---------- Maintenance mode ----------
+let maintMinutes = 60, maintNs = new Set();
+function openMaint() {
+  const names = [...new Set(data.pods.map((p) => p.namespace))].sort();
+  maintNs = new Set();
+  $("maintNs").innerHTML = `<button type="button" class="pick" data-ns="" aria-pressed="true">Whole cluster</button>` + names.map((n) => `<button type="button" class="pick" data-ns="${esc(n)}">${esc(n)}</button>`).join("");
+  $("maintErr").textContent = ""; $("maintReason").value = "";
+  $("maintModal").hidden = false;
+}
+$("maintBtn").addEventListener("click", openMaint);
+$("maintCancel").addEventListener("click", () => $("maintModal").hidden = true);
+$("maintModal").addEventListener("click", (e) => { if (e.target.id === "maintModal") $("maintModal").hidden = true; });
+$("maintDur").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-min]"); if (!b) return;
+  $("maintDur").querySelectorAll(".pick").forEach((x) => x.setAttribute("aria-pressed", x === b));
+  $("maintUntil").hidden = b.dataset.min !== "until";
+  maintMinutes = b.dataset.min === "until" ? null : +b.dataset.min;
+});
+$("maintNs").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-ns]"); if (!b) return;
+  if (!b.dataset.ns) maintNs.clear(); else if (maintNs.has(b.dataset.ns)) maintNs.delete(b.dataset.ns); else maintNs.add(b.dataset.ns);
+  $("maintNs").querySelectorAll(".pick").forEach((x) => x.setAttribute("aria-pressed", x.dataset.ns ? maintNs.has(x.dataset.ns) : !maintNs.size));
+});
+$("maintForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  let minutes = maintMinutes;
+  if (minutes == null) {
+    const [h, m] = ($("maintUntil").value || "").split(":").map(Number);
+    if (isNaN(h)) { $("maintErr").textContent = "Pick an end time."; return; }
+    const end = new Date(); end.setHours(h, m || 0, 0, 0); if (end <= new Date()) end.setDate(end.getDate() + 1);
+    minutes = Math.round((end - new Date()) / 60000);
+  }
+  try {
+    const r = await getJSON(API + "maintenance", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ minutes, reason: $("maintReason").value, namespaces: [...maintNs] }) });
+    data.maintenance = r.maintenance; $("maintModal").hidden = true; render();
+  } catch (err) { $("maintErr").textContent = err.message; }
+});
+$("notes").addEventListener("click", async (e) => {
+  if (e.target.id !== "maintEnd") return;
+  e.target.disabled = true;
+  try { const r = await getJSON(API + "maintenance", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ end: true }) });
+        data.maintenance = r.maintenance; render(); }
+  catch (err) { e.target.disabled = false; alert(err.message); }
+});
+
 $("sound").addEventListener("click", () => setSound(!soundOn));
 $("wbSound").addEventListener("click", () => setSound(!soundOn));
 $("alertCard").addEventListener("click", async (e) => {
