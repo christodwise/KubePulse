@@ -880,6 +880,7 @@ class Maintenance:
         self.started = 0.0
         self.by = self.reason = ""
         self.namespaces = []     # empty = the whole cluster
+        self.indefinite = False  # "until I stop": no end time, runs until someone ends it
         self.ended_pending = False   # set when a window ends, so the alerter reports what's still broken
 
     def active(self):
@@ -897,13 +898,15 @@ class Maintenance:
         return self.active() and (not self.namespaces or ns in self.namespaces)
 
     def start(self, minutes, by, reason, namespaces):
-        self.started, self.until = time.time(), time.time() + minutes * 60
+        self.indefinite = not minutes
+        self.started = time.time()
+        self.until = self.started + (minutes * 60 if minutes else 10 * 365 * 86400)
         self.by, self.reason = by, reason.strip()[:200]
         self.namespaces = sorted({n for n in namespaces if NAME_RE.match(n)})
         self.ended_pending = False
         scope = "the whole cluster" if not self.namespaces else ", ".join(self.namespaces)
-        when = datetime.fromtimestamp(self.until, _tz()).strftime("%H:%M")
-        ALERTS.post(f"#### 🛠️ {ALERTS._prefix()}Maintenance started by {by} until {when} ({DIGEST_TIMEZONE})\n"
+        when = "someone ends it" if self.indefinite else datetime.fromtimestamp(self.until, _tz()).strftime("%H:%M") + f" ({DIGEST_TIMEZONE})"
+        ALERTS.post(f"#### 🛠️ {ALERTS._prefix()}Maintenance started by {by} until {when}\n"
                     f"Alerts are paused for {scope}." + (f"\n> {self.reason}" if self.reason else ""))
         INSIGHTS.save_now()
 
@@ -911,6 +914,7 @@ class Maintenance:
         if not self.until:
             return
         self.until = min(self.until, time.time())
+        self.indefinite = False
         self.ended_pending = True
         self.ended_by = by
         INSIGHTS.save_now()
@@ -918,7 +922,9 @@ class Maintenance:
     def view(self):
         if not self.active():
             return None
-        return {"until": datetime.fromtimestamp(self.until, timezone.utc).isoformat(), "left": int(self.until - time.time()),
+        return {"until": None if self.indefinite else datetime.fromtimestamp(self.until, timezone.utc).isoformat(),
+                "left": None if self.indefinite else int(self.until - time.time()), "indefinite": self.indefinite,
+                "since": int(time.time() - self.started),
                 "by": self.by, "reason": self.reason, "namespaces": self.namespaces}
 
     def load(self, st):
@@ -926,10 +932,11 @@ class Maintenance:
         self.until, self.started = st.get("until", 0.0), st.get("started", 0.0)
         self.by, self.reason, self.namespaces = st.get("by", ""), st.get("reason", ""), st.get("namespaces", [])
         self.ended_pending = st.get("endedPending", False)
+        self.indefinite = st.get("indefinite", False)
 
     def dump(self):
         return {"until": self.until, "started": self.started, "by": self.by, "reason": self.reason,
-                "namespaces": self.namespaces, "endedPending": self.ended_pending}
+                "namespaces": self.namespaces, "endedPending": self.ended_pending, "indefinite": self.indefinite}
 
 
 MAINT = Maintenance()
@@ -958,7 +965,9 @@ def build_digest(snap, days):
 
     lines = []
     if MAINT.active():
-        lines.append(f"**Maintenance:** on until {datetime.fromtimestamp(MAINT.until, _tz()).strftime('%H:%M')}" + (f" ({MAINT.reason})" if MAINT.reason else ""))
+        until = f"until stopped, on for {fmt_age(int(time.time() - MAINT.started))} — remember to end it" if MAINT.indefinite \
+            else f"on until {datetime.fromtimestamp(MAINT.until, _tz()).strftime('%H:%M')}"
+        lines.append(f"**Maintenance:** 🛠️ {until}" + (f" ({MAINT.reason})" if MAINT.reason else ""))
     if score is not None:
         extra = ""
         if days > 1 and len(up) > 1:
@@ -1763,7 +1772,7 @@ class Alerter:
                 if still:
                     self.send(head + f"\n⚠️ **{len(still)} problem{'s' if len(still) != 1 else ''} still there:**", still)
                 else:
-                    self.post(head + " Everything looks healthy 🎉")
+                    self.post(head + (" Nothing new broke during maintenance 🎉" if self.active else " Everything looks healthy 🎉"))
                 MAINT.ended_by = None
                 INSIGHTS.save_now()
         new = []
@@ -2180,9 +2189,9 @@ class Handler(BaseHTTPRequestHandler):
                     MAINT.end(self._user())
                 else:
                     minutes = int(data.get("minutes") or 0)
-                    if not 5 <= minutes <= 24 * 60:
+                    if not data.get("indefinite") and not 5 <= minutes <= 24 * 60:
                         raise BadRequest("Pick a maintenance window between 5 minutes and 24 hours.")
-                    MAINT.start(minutes, self._user() or "someone", str(data.get("reason") or ""), data.get("namespaces") or [])
+                    MAINT.start(0 if data.get("indefinite") else minutes, self._user() or "someone", str(data.get("reason") or ""), data.get("namespaces") or [])
                 with STORE.lock:
                     if STORE.snap:
                         STORE.snap["maintenance"] = MAINT.view()

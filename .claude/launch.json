@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "kubepulse-demo",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["-c", "python3 dev/fake_cluster.py & sleep 1; K8S_API=http://127.0.0.1:8911 DATA_DIR=/private/tmp/claude-503/-Users-christo-Downloads-KubePulse/5157d150-1012-420c-afac-bfc81a3dda38/scratchpad KUBEPULSE_USERS=admin:demo OPENAI_API_KEY=x OPENAI_BASE_URL=http://127.0.0.1:8912/v1 MATTERMOST_WEBHOOK_URL=http://127.0.0.1:8913/hook exec python3 app.py"],
+      "port": 8080
+    }
+  ]
+}

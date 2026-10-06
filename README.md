@@ -48,7 +48,7 @@ Kubernetes. The screenshots use demo data.
 - Optional **sound**: a monitor beep when a pod starts failing, a flatline when a node goes down, a chime when everything recovers. Browsers only allow audio after a click, so after a reload the wallboard shows *Tap to enable sound*
 
 **Maintenance mode** 🛠️
-- Start it from the sidebar for 30 minutes to 8 hours (or until a set time), for the whole cluster or chosen namespaces, with a reason
+- Start it from the sidebar for 30 minutes to 8 hours, until a set time, or **until you stop it**, for the whole cluster or chosen namespaces, with a reason
 - While it's on: no alerts, rollout warnings, AI analyses or sounds for anything in scope; a banner on every page; a calm purple wallboard instead of red
 - Mattermost is told when it starts and ends. When it ends, anything still broken is reported; problems that fixed themselves during the window aren't
 

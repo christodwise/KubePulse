@@ -896,6 +896,7 @@
     <button type="button" class="pick" data-min="30">30 min</button><button type="button" class="pick" data-min="60" aria-pressed="true">1 hour</button>
     <button type="button" class="pick" data-min="120">2 hours</button><button type="button" class="pick" data-min="240">4 hours</button>
     <button type="button" class="pick" data-min="480">8 hours</button><button type="button" class="pick" data-min="until">Until…</button>
+    <button type="button" class="pick" data-min="stop">Until I stop</button>
   </div>
   <input type="time" id="maintUntil" hidden style="margin-top:8px">
   <label class="l">Which namespaces</label>
@@ -1172,8 +1173,9 @@ function renderShell(s) {
   $("viewSub").textContent = data.clusterName ? `${data.clusterName} · ${plural(data.nodes.length, "node")} · ${plural(data.pods.length, "pod")}` : `${plural(data.nodes.length, "node")} · ${plural(data.pods.length, "pod")}`;
   const m = data.maintenance;
   $("maintBtn").hidden = !!m;
-  if (m) $("alertChip").innerHTML = `<span class="dot pulse" style="--cf:#5e5ce6"></span><div><b>Maintenance</b>Alerts paused until ${timeStr(m.until)}</div>`;
-  $("notes").innerHTML = (m ? `<div class="maint-banner"><span class="ic">🛠️</span><div><b>Maintenance until ${timeStr(m.until)}</b> (${fmtAge(m.left)} left) · alerts paused for ${m.namespaces.length ? esc(m.namespaces.join(", ")) : "the whole cluster"}
+  const mUntil = m ? (m.indefinite ? "until stopped" : "until " + timeStr(m.until)) : "";
+  if (m) $("alertChip").innerHTML = `<span class="dot pulse" style="--cf:#5e5ce6"></span><div><b>Maintenance</b>Alerts paused ${mUntil}</div>`;
+  $("notes").innerHTML = (m ? `<div class="maint-banner"><span class="ic">🛠️</span><div><b>Maintenance ${mUntil}</b> (${m.indefinite ? "on for " + fmtAge(m.since) + ", end it when you're done" : fmtAge(m.left) + " left"}) · alerts paused for ${m.namespaces.length ? esc(m.namespaces.join(", ")) : "the whole cluster"}
       <div class="muted">${m.reason ? esc(m.reason) + " · " : ""}started by ${esc(m.by)}</div></div><span class="grow"></span><button class="btn" id="maintEnd">End now</button></div>` : "")
     + (data.error ? `<div class="note">Can't reach the Kubernetes API right now: ${esc(data.error)}</div>` : "")
     + (data.metricsAvailable ? "" : '<div class="note">CPU and memory usage are unavailable because metrics-server is not responding.</div>');
@@ -1556,7 +1558,7 @@ function renderWall(s) {
   $("wb").classList.toggle("maint", !!calm);
   $("wbMaint").hidden = !m;
   $("wbEcg").style.visibility = m ? "hidden" : "";
-  if (m) $("wbMaint").textContent = `🛠️ Maintenance until ${timeStr(m.until)}${m.namespaces.length ? " · " + m.namespaces.join(", ") : ""}${m.reason ? " · " + m.reason : ""}`;
+  if (m) $("wbMaint").textContent = `🛠️ Maintenance ${m.indefinite ? "until stopped" : "until " + timeStr(m.until)}${m.namespaces.length ? " · " + m.namespaces.join(", ") : ""}${m.reason ? " · " + m.reason : ""}`;
   $("wbEcg").className = "ecg " + lvlClass(s.state);
   $("wbStatus").className = `panel wb-status ${lvlClass(s.state)} ${s.state === "bad" && !calm ? "alarm" : ""}`;
   $("wbStatus").style.cssText = calm ? "--c:#bfbfff;--cf:#7d7aff" : "";
@@ -2079,7 +2081,7 @@ $("maintDur").addEventListener("click", (e) => {
   const b = e.target.closest("[data-min]"); if (!b) return;
   $("maintDur").querySelectorAll(".pick").forEach((x) => x.setAttribute("aria-pressed", x === b));
   $("maintUntil").hidden = b.dataset.min !== "until";
-  maintMinutes = b.dataset.min === "until" ? null : +b.dataset.min;
+  maintMinutes = b.dataset.min === "until" ? null : b.dataset.min === "stop" ? "stop" : +b.dataset.min;
 });
 $("maintNs").addEventListener("click", (e) => {
   const b = e.target.closest("[data-ns]"); if (!b) return;
@@ -2089,7 +2091,8 @@ $("maintNs").addEventListener("click", (e) => {
 $("maintForm").addEventListener("submit", async (e) => {
   e.preventDefault();
   let minutes = maintMinutes;
-  if (minutes == null) {
+  if (minutes === "stop") minutes = 0;
+  else if (minutes == null) {
     const [h, m] = ($("maintUntil").value || "").split(":").map(Number);
     if (isNaN(h)) { $("maintErr").textContent = "Pick an end time."; return; }
     const end = new Date(); end.setHours(h, m || 0, 0, 0); if (end <= new Date()) end.setDate(end.getDate() + 1);
@@ -2097,7 +2100,7 @@ $("maintForm").addEventListener("submit", async (e) => {
   }
   try {
     const r = await getJSON(API + "maintenance", { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ minutes, reason: $("maintReason").value, namespaces: [...maintNs] }) });
+      body: JSON.stringify({ minutes, indefinite: maintMinutes === "stop", reason: $("maintReason").value, namespaces: [...maintNs] }) });
     data.maintenance = r.maintenance; $("maintModal").hidden = true; render();
   } catch (err) { $("maintErr").textContent = err.message; }
 });
