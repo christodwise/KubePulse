@@ -1,0 +1,404 @@
+{
+  "title": "KubePulse tutorial",
+  "product_url": "http://localhost:8090",
+  "brand": {
+    "name": "KubePulse",
+    "logo_image": "/Users/christo/Downloads/KubePulse/promo/logo_square.png",
+    "colors": [
+      "#0a84ff",
+      "#30d158",
+      "#ffd60a",
+      "#ff453a"
+    ],
+    "url": "kubepulse.local"
+  },
+  "setup": {
+    "color_scheme": "dark",
+    "storage_state": "/Users/christo/Downloads/KubePulse/promo/kubepulse.state.json"
+  },
+  "voice": {
+    "voice": "af_heart",
+    "speed": 0.94
+  },
+  "music": {
+    "mood": "tech"
+  },
+  "subtitles": true,
+  "spotlight": "clicks",
+  "scenes": [
+    {
+      "type": "title",
+      "kicker": "Product tutorial",
+      "lines": [
+        "Something broke.",
+        "*Where?*"
+      ],
+      "ghost": [
+        "$ kubectl get pods -A | grep -v Running",
+        "payments-api-7d9f8c6b5-m8q1z   0/1   CrashLoopBackOff   19",
+        "$ kubectl describe pod payments-api-...",
+        "$ kubectl logs --previous ...",
+        "$ █"
+      ],
+      "say": "Something broke in the cluster. Now you're digging through kubectl to find out where, and why."
+    },
+    {
+      "type": "logo",
+      "tagline": [
+        "Know before",
+        "it breaks."
+      ],
+      "say": "Meet KubePulse."
+    },
+    {
+      "type": "app",
+      "url": "/#overview",
+      "chapter": "Your cluster at a glance",
+      "say": "Open KubePulse and the overview tells you how the cluster is doing in one look: a health score, CPU and memory trends, and the pods that need you right now.",
+      "steps": [
+        {
+          "do": "wait",
+          "s": 0.8
+        },
+        {
+          "do": "hover",
+          "target": "#health",
+          "caption": "Health score, at a glance",
+          "s": 1.8
+        },
+        {
+          "do": "hover",
+          "target": "#k-cpu",
+          "caption": "CPU and memory trends",
+          "s": 1.4
+        },
+        {
+          "do": "hover",
+          "target": "#attention",
+          "caption": "What needs attention now",
+          "s": 1.8
+        },
+        {
+          "do": "mouse",
+          "x": 960,
+          "y": 600,
+          "move": 0.6
+        }
+      ]
+    },
+    {
+      "type": "app",
+      "url": "/#overview",
+      "layout": "tilt-left",
+      "chapter": "The cluster map",
+      "side": {
+        "heading": "Every pod, *one dot.*",
+        "text": "Each node is a card. Each pod is a dot, coloured by status.",
+        "bullets": [
+          "Green: healthy",
+          "Amber: warning or pending",
+          "Red: failing, and breathing"
+        ]
+      },
+      "say": "Scroll down for the cluster map. Every node is a card, every pod is a dot, and failing pods pulse red so you can't miss them.",
+      "steps": [
+        {
+          "do": "wait",
+          "s": 0.5
+        },
+        {
+          "do": "scroll",
+          "by": 620,
+          "s": 1.6
+        },
+        {
+          "do": "hover",
+          "target": "#map .mnode >> nth=0",
+          "s": 2.2,
+          "zoom": false
+        },
+        {
+          "do": "wait",
+          "s": 1.2
+        }
+      ]
+    },
+    {
+      "type": "app",
+      "url": "/#overview",
+      "chapter": "Why is this pod failing?",
+      "say": "Click a failing pod. KubePulse explains the problem in plain language, shows its events, and even the logs from the run that crashed.",
+      "steps": [
+        {
+          "do": "wait",
+          "s": 0.6
+        },
+        {
+          "do": "click",
+          "target": "#attention .row.link >> nth=0",
+          "caption": "Click a failing pod",
+          "after": 0.8
+        },
+        {
+          "do": "wait_for",
+          "target": "#dBody .callout",
+          "after": 0.3
+        },
+        {
+          "do": "hover",
+          "target": "#dBody .callout",
+          "caption": "The reason, in plain words",
+          "s": 1.8
+        },
+        {
+          "do": "click",
+          "target": "#tabs [data-tab=\"logs\"]",
+          "caption": "Logs, even from the crashed run",
+          "after": 1.8
+        }
+      ]
+    },
+    {
+      "type": "app",
+      "url": "/#pod/prod/payments-api-7d9f8c6b5-m8q1z",
+      "chapter": "Diagnose with AI",
+      "say": "Still not sure? Hit Diagnose. Kubi works like an on-call engineer: he reads the logs, checks the rollout, sibling pods, and the node, then tells you what's wrong and exactly how to fix it.",
+      "steps": [
+        {
+          "do": "wait",
+          "s": 0.6
+        },
+        {
+          "do": "click",
+          "target": "#tabs [data-tab=\"ai\"]",
+          "after": 0.6
+        },
+        {
+          "do": "click",
+          "target": "#aiRun",
+          "caption": "Let Kubi investigate",
+          "after": 0.4
+        },
+        {
+          "do": "wait_for",
+          "target": "#dBody .report",
+          "timeout": 90,
+          "after": 0.4
+        },
+        {
+          "do": "hover",
+          "target": "#dBody .report",
+          "caption": "Verdict, evidence and the fix",
+          "s": 2.2,
+          "sfx": "success"
+        },
+        {
+          "do": "scroll",
+          "by": 300,
+          "s": 1.4
+        }
+      ]
+    },
+    {
+      "type": "app",
+      "url": "/#pods",
+      "chapter": "Find any pod",
+      "say": "The Pods page lets you search and filter everything. Each pod shows its real usage against its request and its limit, so an out of memory kill never surprises you.",
+      "steps": [
+        {
+          "do": "wait",
+          "s": 0.5
+        },
+        {
+          "do": "type",
+          "target": "#q",
+          "text": "payments",
+          "delay": 0.09,
+          "caption": "Search by pod, namespace or node"
+        },
+        {
+          "do": "wait",
+          "s": 0.5
+        },
+        {
+          "do": "hover",
+          "target": "#podRows tr >> nth=0 >> td >> nth=5",
+          "caption": "Usage vs request and limit",
+          "s": 2.0
+        },
+        {
+          "do": "click",
+          "target": "#onlyBad",
+          "caption": "Problems only",
+          "after": 1.2
+        }
+      ]
+    },
+    {
+      "type": "app",
+      "url": "/#insights",
+      "chapter": "Spot patterns",
+      "say": "Insights starts with a plain-language summary, most serious first. Below it: restarts over the last day, uptime, top offenders, wasted resources, certificates and volumes running out.",
+      "steps": [
+        {
+          "do": "wait",
+          "s": 0.6
+        },
+        {
+          "do": "hover",
+          "target": "#findings",
+          "caption": "Summary, most serious first",
+          "s": 2.0
+        },
+        {
+          "do": "scroll",
+          "by": 640,
+          "s": 1.6
+        },
+        {
+          "do": "hover",
+          "target": "#timeline",
+          "caption": "Restarts over 24 hours",
+          "s": 1.8
+        },
+        {
+          "do": "scroll",
+          "by": 700,
+          "s": 1.6
+        }
+      ]
+    },
+    {
+      "type": "app",
+      "url": "/#overview",
+      "chapter": "Planned maintenance",
+      "say": "Doing planned work? Start maintenance mode. Alerts pause for the whole cluster or just the namespaces you pick, and Mattermost hears when it starts and ends.",
+      "steps": [
+        {
+          "do": "wait",
+          "s": 0.5
+        },
+        {
+          "do": "click",
+          "target": "#maintBtn",
+          "caption": "Pause alerts during planned work",
+          "after": 0.6
+        },
+        {
+          "do": "click",
+          "target": "#maintDur [data-min=\"120\"]",
+          "caption": "Pick how long",
+          "after": 0.4
+        },
+        {
+          "do": "hover",
+          "target": "#maintNs",
+          "caption": "Whole cluster, or chosen namespaces",
+          "s": 1.6
+        },
+        {
+          "do": "click",
+          "target": "#maintCancel",
+          "zoom": false,
+          "after": 0.6
+        }
+      ]
+    },
+    {
+      "type": "keys",
+      "keys": [
+        "F"
+      ],
+      "label": "Put it on the *big screen.*",
+      "say": "Press F for the wallboard."
+    },
+    {
+      "type": "app",
+      "url": "/wall",
+      "chapter": "The wallboard",
+      "say": "It's built for the office TV. Big status, a live heartbeat, and active incidents. When something's critical, the whole screen turns red.",
+      "steps": [
+        {
+          "do": "wait",
+          "s": 1.2
+        },
+        {
+          "do": "hover",
+          "target": "#wbStatus",
+          "caption": "Status you can read across the room",
+          "s": 2.0
+        },
+        {
+          "do": "hover",
+          "target": "#wbInc",
+          "caption": "Active incidents",
+          "s": 2.0
+        },
+        {
+          "do": "mouse",
+          "x": 960,
+          "y": 540,
+          "move": 0.8
+        },
+        {
+          "do": "wait",
+          "s": 1.0
+        }
+      ]
+    },
+    {
+      "type": "features",
+      "heading": "Built for *on-call.*",
+      "items": [
+        {
+          "icon": "🔔",
+          "title": "Mattermost alerts",
+          "text": "Failing pods, OOM kills, nodes, certs and volumes. Once per problem."
+        },
+        {
+          "icon": "🤖",
+          "title": "AI diagnosis",
+          "text": "Verdict, evidence and the fix, with secrets removed."
+        },
+        {
+          "icon": "🚀",
+          "title": "Rollout tracking",
+          "text": "What changed in every new version, and how it's doing."
+        },
+        {
+          "icon": "📬",
+          "title": "Daily digest",
+          "text": "Uptime, restarts and waste, every morning."
+        },
+        {
+          "icon": "🛠️",
+          "title": "Maintenance mode",
+          "text": "Quiet alerts during planned work."
+        },
+        {
+          "icon": "🔒",
+          "title": "Read-only",
+          "text": "One Python file, about 15 MiB of memory."
+        }
+      ],
+      "say": "Mattermost alerts, AI diagnosis, rollout tracking, a daily digest, and maintenance mode. All read-only, in about fifteen megabytes of memory."
+    },
+    {
+      "type": "outro",
+      "tagline": [
+        "Know before",
+        "it breaks."
+      ],
+      "cta": "kubectl apply -f kubepulse.yaml",
+      "chips": [
+        "Health score",
+        "Cluster map",
+        "AI diagnosis",
+        "Alerts",
+        "Insights",
+        "Wallboard"
+      ],
+      "say": "KubePulse. Know before it breaks."
+    }
+  ]
+}

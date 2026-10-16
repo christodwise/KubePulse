@@ -1,0 +1,17 @@
+[render]
+  frame 0/7165  0s
+  frame 600/7165  29s
+  frame 1200/7165  66s
+  frame 1800/7165  101s
+  frame 2400/7165  134s
+  frame 3000/7165  167s
+  frame 3600/7165  196s
+  frame 4200/7165  229s
+  frame 4800/7165  261s
+  frame 5400/7165  292s
+  frame 6000/7165  326s
+  frame 6600/7165  353s
+[audio]
+  audio: mood=tech, drop at 6.8s
+[mux]
+  done -> /Users/christo/Downloads/KubePulse/promo/kubepulse.mp4
