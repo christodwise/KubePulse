@@ -38,6 +38,17 @@ CLUSTER_NAME = env("CLUSTER_NAME", "").strip()
 
 INDEX_HTML = (Path(__file__).parent / "index.html").read_bytes()
 INDEX_GZ = gzip.compress(INDEX_HTML, 9)
+# The page's one inline script is allowed by its hash, so injected scripts can't run
+_SCRIPT = re.search(rb"<script>(.*?)</script>", INDEX_HTML, re.S).group(1)
+PAGE_CSP = ("default-src 'self'; "
+            f"script-src 'sha256-{base64.b64encode(hashlib.sha256(_SCRIPT).digest()).decode()}'; "
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; "
+            "img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; "
+            "form-action 'self'; frame-ancestors 'self'")
+SECURITY_HEADERS = {"X-Content-Type-Options": "nosniff", "X-Frame-Options": "SAMEORIGIN",
+                    "Referrer-Policy": "same-origin"}
+# Proxies in front of KubePulse that add to X-Forwarded-For (the Ingress = 1). 0 = ignore the header.
+TRUSTED_PROXIES = max(0, int(env("TRUSTED_PROXIES", "1")))
 
 # Optional AI investigation via any OpenAI-compatible chat completions API
 OPENAI_API_KEY = env("OPENAI_API_KEY", "").strip()
@@ -2039,7 +2050,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
-        for k, v in {"Cache-Control": "no-store", **(headers or {})}.items():
+        extra = {"Content-Security-Policy": PAGE_CSP} if ctype.startswith("text/html") else {}
+        for k, v in {"Cache-Control": "no-store", **SECURITY_HEADERS, **extra, **(headers or {})}.items():
             self.send_header(k, v)
         self.end_headers()
         self.wfile.write(body)
@@ -2056,7 +2068,12 @@ class Handler(BaseHTTPRequestHandler):
             self._send(code, json.dumps({"error": msg}).encode(), "application/json")
 
     def _client(self):
-        return (self.headers.get("X-Forwarded-For") or self.client_address[0]).split(",")[0].strip()
+        """The caller's address. Only the X-Forwarded-For entries added by our own proxies count: anything
+        to their left was sent by the caller and could be anything, e.g. a new address per password guess."""
+        hops = [h.strip() for h in (self.headers.get("X-Forwarded-For") or "").split(",") if h.strip()]
+        if TRUSTED_PROXIES and len(hops) >= TRUSTED_PROXIES:
+            return hops[-TRUSTED_PROXIES]
+        return self.client_address[0]
 
     def _cookie(self, name):
         for part in (self.headers.get("Cookie") or "").split(";"):
@@ -2096,7 +2113,10 @@ class Handler(BaseHTTPRequestHandler):
         client, now = self._client(), time.time()
         with FAILED_LOCK:
             recent = [t for t in FAILED_LOGINS.get(client, []) if now - t < 600]
-            FAILED_LOGINS[client] = recent
+            if recent:
+                FAILED_LOGINS[client] = recent
+            else:
+                FAILED_LOGINS.pop(client, None)
         if len(recent) >= 10:
             return self._send(429, json.dumps({"error": "Too many attempts. Try again in a few minutes."}).encode(), "application/json")
         data = self._json_body()

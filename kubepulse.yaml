@@ -109,6 +109,8 @@ spec:
               value: "true"
             - name: SESSION_HOURS       # how long a sign-in lasts
               value: "12"
+            - name: TRUSTED_PROXIES     # proxies in front that add to X-Forwarded-For: 1 = the Ingress, 2 = a load balancer + the Ingress
+              value: "1"
             - name: POLL_SECONDS        # how often KubePulse reads the cluster
               value: "20"
             - name: OPENAI_MODEL

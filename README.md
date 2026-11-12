@@ -106,6 +106,7 @@ Set these in the Deployment in `kubepulse.yaml`. Every setting is optional.
 | `POLL_SECONDS` | `20` | How often KubePulse reads the cluster |
 | `WALLBOARD_PUBLIC` | `true` | Serve the wallboard at `/wall` without sign-in. `false` makes it need a sign-in too |
 | `SESSION_HOURS` | `12` | How long a sign-in lasts |
+| `TRUSTED_PROXIES` | `1` | How many proxies in front of KubePulse add to `X-Forwarded-For` (the Ingress = 1, a load balancer that adds it too = 2). The sign-in limit of 10 wrong passwords per 10 minutes counts per address, read from that many entries from the right; `0` ignores the header |
 | `AUTH` | `on` | `off` turns sign-in off entirely, e.g. behind your own single sign-on proxy |
 | `ALERT_PENDING_MINUTES` | `3` | Alert on pods pending or not ready for this long |
 | `ALERT_COOLDOWN_MINUTES` | `30` | Don't re-alert a problem that comes back within this window |
