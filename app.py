@@ -1005,6 +1005,9 @@ SQL_STATEMENTS = """select s.queryid::text as id, d.datname, r.rolname as usenam
   where s.query not ilike '%pg_stat_%' order by s.{total} desc limit 300"""
 
 
+DB_COUNTERS = ("xact_commit", "xact_rollback", "blks_hit", "blks_read", "deadlocks", "temp_bytes")
+
+
 class Databases:
     """PostgreSQL servers: health from postgres_exporter, and (with PG_URLS) connections per app,
     running and blocked queries and the slowest statements. Runs in its own thread, so a slow or
@@ -1017,7 +1020,8 @@ class Databases:
         self.clients = {}       # key -> Postgres
         self.exporters = []     # [(key, ns, name, port | url)]
         self.found_at = 0.0
-        self.prev = {}          # key -> (time, counters), for rates
+        self.prev = {}          # key -> (time, counters, {database: counters}), for rates
+        self.sizes = {}         # key -> {database: deque of (time, size)}, every 10 minutes for a day, for growth
         self.hist = {}          # key -> deque of [t, connections, active, tps, cache hit %]
         self.stmt_samples = {}  # key -> deque of (time, {queryid: (calls, total ms)}), the last hour
         self.stmt_at = {}       # key -> when statements were last read
@@ -1068,9 +1072,16 @@ class Databases:
         for labels, v in m.get("pg_database_size_bytes", []):
             if labels.get("datname") and not labels["datname"].startswith("template"):
                 dbs.setdefault(labels["datname"], {})["size"] = v
+        for labels, v in m.get("pg_stat_activity_count", []):   # fallback when numbackends isn't exported
+            if labels.get("datname") in dbs:
+                dbs[labels["datname"]]["connections"] = dbs[labels["datname"]].get("connections", 0) + int(v)
         for labels, v in m.get("pg_stat_database_numbackends", []):
             if labels.get("datname") in dbs:
                 dbs[labels["datname"]]["connections"] = int(v)
+        for k in DB_COUNTERS:
+            for labels, v in m.get(f"pg_stat_database_{k}", []):
+                if labels.get("datname") in dbs:
+                    dbs[labels["datname"]].setdefault("c", {})[k] = v
         version = next((labels.get("short_version") or labels.get("version") for labels, _ in m.get("pg_static", [])), None)
         start = total("pg_postmaster_start_time_seconds")
         longest_tx = max((v for _, v in m.get("pg_stat_activity_max_tx_duration", [])), default=None)
@@ -1110,7 +1121,8 @@ class Databases:
             "up": True, "version": server["version"], "maxConnections": _num(server["max_conn"], int),
             "uptime": _num(server["uptime"], int), "replica": server["replica"] == "t", "lag": _num(server["lag"]),
             "states": states, "longestTx": max((s["xactAge"] or 0 for s in sessions), default=None),
-            "databases": {r["datname"]: {"size": _num(r["size"]), "connections": _num(r["numbackends"], int)} for r in dbrows},
+            "databases": {r["datname"]: {"size": _num(r["size"]), "connections": _num(r["numbackends"], int),
+                                         "c": {k: _num(r[k]) for k in DB_COUNTERS}} for r in dbrows},
             "counters": counters, "sessions": sessions,
         }
 
@@ -1164,10 +1176,40 @@ class Databases:
         self.stmts[key] = ({"window": window, "rows": [q for q in out if q["id"] in pick]}, None)
         return self.stmts[key]
 
+    def _db_rates(self, key, inst, now, prev):
+        """Per database: transactions / s, cache hit, rollbacks, new deadlocks, temp files and growth over the last day."""
+        dbs = inst.get("databases") or {}
+        sizes = self.sizes.setdefault(key, {})
+        for name, db in dbs.items():
+            c, p = db.pop("c", None) or {}, (prev or {}).get(name)
+            db["deadlocks"] = _num(c.get("deadlocks"), int)
+            if p and now > p[0] and all(c.get(k) is not None and p[1].get(k) is not None and c[k] >= p[1][k] for k in DB_COUNTERS):
+                dt, d = now - p[0], {k: c[k] - p[1][k] for k in DB_COUNTERS}
+                db["tps"] = round((d["xact_commit"] + d["xact_rollback"]) / dt, 1)
+                db["rollbacksPerMin"] = round(d["xact_rollback"] / dt * 60, 1)
+                db["newDeadlocks"] = int(d["deadlocks"])
+                db["tempPerMin"] = round(d["temp_bytes"] / dt * 60)
+                if d["blks_hit"] + d["blks_read"] > 0:
+                    db["cacheHit"] = round(d["blks_hit"] / (d["blks_hit"] + d["blks_read"]) * 100, 1)
+            if db.get("cacheHit") is None and c.get("blks_hit") is not None and c["blks_hit"] + (c.get("blks_read") or 0) > 0:
+                db["cacheHit"] = round(c["blks_hit"] / (c["blks_hit"] + (c.get("blks_read") or 0)) * 100, 1)
+            if db.get("size") is not None:
+                h = sizes.setdefault(name, deque())
+                if not h or now - h[-1][0] >= 600:
+                    h.append((now, db["size"]))
+                while len(h) > 1 and now - h[1][0] >= 86400:
+                    h.popleft()
+                if now - h[0][0] >= 3000:
+                    db["growth"], db["growthOver"] = db["size"] - h[0][1], int(now - h[0][0])
+        for name in set(sizes) - set(dbs):
+            del sizes[name]
+
     def _rates(self, key, inst):
         now, c = time.time(), inst["counters"]
         prev = self.prev.get(key)
-        self.prev[key] = (now, c)
+        db_counters = {name: dict(db.get("c") or {}) for name, db in (inst.get("databases") or {}).items()}
+        self._db_rates(key, inst, now, prev[2] if prev else None)
+        self.prev[key] = (now, c, {name: (now, dc) for name, dc in db_counters.items()})
         tps = hit = None
         if prev and all(c.get(k) is not None and prev[1].get(k) is not None for k in ("xact_commit", "xact_rollback")):
             dt = now - prev[0]

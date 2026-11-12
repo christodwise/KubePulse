@@ -707,10 +707,28 @@
   .dbstats div:nth-child(n + 4) { border-top: 1px solid var(--line); }
   .dbstats div > span { display: block; font-size: 11.5px; color: var(--muted); }
   .dbstats b { display: block; font-size: 17px; font-weight: 600; letter-spacing: -.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .dbsizes { font-size: 12px; color: var(--muted); margin-top: 12px; line-height: 1.6; }
-  .dbsizes b { color: var(--ink); font-weight: 600; }
-  .dbcard .spark { margin: 12px -20px 0; height: 46px; flex: none; }
-  .dbcard .spark-l { font-size: 11.5px; color: var(--muted); margin-top: 12px; }
+  .dbtop { margin-top: 14px; }
+  .dbtop-h { display: flex; justify-content: space-between; align-items: baseline; font-size: 11.5px; color: var(--muted); margin-bottom: 6px; }
+  .dbtop-h .linkbtn { font-size: 12px; }
+  .dbrow { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) 64px 56px; gap: 10px; align-items: center; font-size: 12.5px; padding: 3px 0; }
+  .dbrow b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dbrow span { text-align: right; font-variant-numeric: tabular-nums; }
+  .dbrow small { color: var(--muted); font-size: 11.5px; text-align: right; }
+  .dbrow .ub, .sizecell .ub { height: 6px; border-radius: 6px; background: var(--fill); overflow: hidden; }
+  .dbrow .ub i, .sizecell .ub i { display: block; height: 100%; border-radius: 6px; background: var(--brand); opacity: .75; }
+  .dbsparks { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 14px -20px 0; }
+  .dbsparks > div { min-width: 0; }
+  .dbsparks > div:first-child .spark-l { padding-left: 20px; } .dbsparks > div:last-child .spark-l { padding-right: 20px; }
+  .dbcard .spark { height: 46px; flex: none; margin-top: 6px; }
+  .dbcard .spark-l { font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #dbAll .card-h { flex-wrap: wrap; row-gap: 8px; }
+  #dbAll .seg { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+  #dbAll .seg button { white-space: nowrap; }
+  .dblist th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
+  .dblist th.sortable:hover { color: var(--ink); }
+  .dblist td { white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .sizecell { display: grid; grid-template-columns: 80px 64px; gap: 10px; align-items: center; justify-content: end; text-align: right; }
+  @media (max-width: 520px) { .dbrow { grid-template-columns: minmax(0, 1fr) 64px 50px; } .dbrow .ub { display: none; } .dbstats { grid-template-columns: repeat(2, minmax(0, 1fr)); } .dbstats div { border: 0 !important; } }
   .dbsel { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 6px 0 14px; }
   .dbsel h2 { margin: 0; font-size: 17px; font-weight: 600; }
   .sql { font-family: var(--mono); font-size: 12px; line-height: 1.45; white-space: normal; word-break: break-word; min-width: 280px; max-width: 620px;
@@ -899,6 +917,7 @@
     <section id="v-databases" hidden>
       <div id="dbProblems"></div>
       <div class="dbcards" id="dbCards"></div>
+      <div id="dbList"></div>
       <div id="dbDetail"></div>
     </section>
     <footer class="madeby">Made by Lifetrenz DevOps team ❤️</footer>
@@ -1804,36 +1823,80 @@ function dbServerProblems(d, t) {
 }
 
 function dbCard(d) {
-  const st = d.states || {}, mc = d.maxConnections, conns = d.connections;
+  const st = d.states || {}, mc = d.maxConnections, conns = d.connections, t = data.databases.thresholds || {};
   const active = st.active || 0, idleTx = (st["idle in transaction"] || 0) + (st["idle in transaction (aborted)"] || 0), idle = st.idle || 0;
   const w = (n) => mc ? Math.min(100, n / mc * 100) : 0;
   const status = d.up === false ? ["Down", "bad"] : d.up == null ? ["Unknown", "muted"] : ["Up", "ok"];
   const role = d.replica ? "Replica" : d.up == null ? "" : "Primary";
   const dbs = Object.entries(d.databases || {}).sort((a, b) => (b[1].size || 0) - (a[1].size || 0));
-  const total = dbs.reduce((a, [, v]) => a + (v.size || 0), 0);
+  const total = dbs.reduce((a, [, v]) => a + (v.size || 0), 0), biggest = dbs[0]?.[1].size || 1;
+  const temp = dbs.some(([, v]) => v.tempPerMin != null) ? dbs.reduce((a, [, v]) => a + (v.tempPerMin || 0), 0) : null;
+  const locks = d.locks ? Object.values(d.locks).reduce((a, b) => a + b, 0) : null;
+  const hot = (cond, v) => cond ? `<span class="hot">${v}</span>` : v;
   const stats = [
-    ["Transactions / s", d.tps != null ? d.tps.toFixed(d.tps < 10 ? 1 : 0) : "–"],
-    ["Cache hit", d.cacheHit != null ? `<span class="${d.cacheHit < 95 ? "hot" : ""}">${d.cacheHit.toFixed(1)}%</span>` : "–"],
-    d.replica ? ["Replication lag", d.lag != null ? `<span class="${d.lag >= (data.databases.thresholds?.lagSeconds || 60) ? "hot" : ""}">${d.lag < 1 ? "<1s" : fmtAge(Math.round(d.lag))}</span>` : "–"]
-              : ["Longest transaction", d.longestTx ? `<span class="${d.longestTx >= (data.databases.thresholds?.longQueryMinutes || 5) * 60 ? "hot" : ""}">${fmtAge(Math.round(d.longestTx))}</span>` : "–"],
-    ["Rollbacks / min", d.rollbacksPerMin != null ? d.rollbacksPerMin : "–"],
-    ["Deadlocks", d.newDeadlocks ? `<span class="hot">${d.newDeadlocks} new</span>` : d.counters?.deadlocks != null ? `${d.counters.deadlocks} total` : "–"],
-    ["Size", total ? fmtBytes(total) : "–"],
+    ["Transactions / s", d.tps != null ? d.tps.toFixed(d.tps < 10 ? 1 : 0) : "–", "Commits and rollbacks per second, all databases"],
+    ["Cache hit", d.cacheHit != null ? hot(d.cacheHit < 95, d.cacheHit.toFixed(1) + "%") : "–", "Reads served from memory. Below 95% means many reads go to disk"],
+    d.replica ? ["Replication lag", d.lag != null ? hot(d.lag >= (t.lagSeconds || 60), d.lag < 1 ? "<1s" : fmtAge(Math.round(d.lag))) : "–", "How far this replica is behind the primary"]
+              : ["Longest transaction", d.longestTx ? hot(d.longestTx >= (t.longQueryMinutes || 5) * 60, fmtAge(Math.round(d.longestTx))) : "none open", "The oldest transaction open right now"],
+    ["Rollbacks / min", d.rollbacksPerMin != null ? hot(d.tps && d.rollbacksPerMin / 60 > d.tps * 0.05, d.rollbacksPerMin) : "–", "Transactions undone, usually by app errors"],
+    ["Deadlocks", d.newDeadlocks ? hot(true, `${d.newDeadlocks} new`) : d.counters?.deadlocks != null ? `${d.counters.deadlocks} total` : "–", "Since the statistics were last reset"],
+    ["Temp files / min", temp == null ? "–" : temp ? hot(true, fmtBytes(temp)) : "none", "Queries spilling to disk because they ran out of work_mem"],
+    ["Databases", dbs.length || "–", ""],
+    ["Total size", total ? fmtBytes(total) : "–", ""],
+    ["Locks held", locks != null ? locks : "–", "Row and table locks held right now"],
   ];
-  const pc = d.connPercent;
+  const pc = d.connPercent, peak = Math.max(0, ...(d.hist?.connections || []).filter((v) => v != null));
+  const span = fmtAge((d.hist?.t?.length || 0) * (data.databases.pollSeconds || 30));
   return `<div class="card dbcard">
     <div class="dbh"><span style="font-size:20px">🐘</span><b title="${esc(dbKey(d))}">${esc(d.name)}</b><span class="tag ${lvlClass(status[1])}">${status[0]}</span>${role ? `<span class="pill">${role}</span>` : ""}</div>
     <div class="sub">${[d.namespace, d.version ? "PostgreSQL " + esc(String(d.version).split(" ")[0]) : "", d.uptime ? "up " + fmtAge(d.uptime) : "",
       { exporter: "from the exporter", sql: "via SQL", "exporter+sql": "exporter + SQL" }[d.source] || ""].filter(Boolean).map(esc).join(" · ")}</div>
     ${d.errors?.length ? `<div class="errs">${d.errors.map(esc).join("<br>")}</div>` : ""}
-    <div class="conn-top"><span>Connections</span><span><b class="${pc >= 90 ? "hot" : ""}">${conns ?? "–"}</b> of ${mc ?? "–"}${pc != null ? ` · ${Math.round(pc)}%` : ""}</span></div>
+    <div class="conn-top"><span>Connections</span><span><b class="${pc >= 90 ? "hot" : ""}">${conns ?? "–"}</b> of ${mc ?? "–"}${pc != null ? ` · ${pc < 1 && conns ? "<1" : Math.round(pc)}%` : ""}</span></div>
     <div class="connbar"><i class="a" style="width:${w(active)}%"></i><i class="t" style="width:${w(idleTx)}%"></i><i class="i" style="width:${w(idle)}%"></i></div>
     <div class="connlegend"><span class="a">${active} active</span><span class="t">${idleTx} idle in transaction</span><span class="i">${idle} idle</span></div>
-    <div class="dbstats">${stats.map(([k, v]) => `<div><span>${k}</span><b>${v}</b></div>`).join("")}</div>
-    ${dbs.length ? `<div class="dbsizes">${dbs.slice(0, 5).map(([n, v]) => `<b>${esc(n)}</b> ${fmtBytes(v.size)}`).join(" · ")}${dbs.length > 5 ? ` · ${dbs.length - 5} more` : ""}</div>` : ""}
-    <div class="spark-l">Connections, last ${fmtAge((d.hist?.t?.length || 0) * (data.databases.pollSeconds || 30))}</div>
-    ${spark(d.hist?.connections, { max: mc || null })}
+    <div class="dbstats">${stats.map(([k, v, tip]) => `<div ${tip ? `title="${esc(tip)}"` : ""}><span>${k}</span><b>${v}</b></div>`).join("")}</div>
+    ${dbs.length ? `<div class="dbtop"><div class="dbtop-h"><span>Largest databases</span>${dbs.length > 5 ? `<button class="linkbtn" data-dblist="${esc(dbKey(d))}">All ${dbs.length} →</button>` : ""}</div>
+      ${dbs.slice(0, 5).map(([n, v]) => `<div class="dbrow"><b title="${esc(n)}">${esc(n)}</b><div class="ub"><i style="width:${Math.max(1, (v.size || 0) / biggest * 100)}%"></i></div>
+        <span>${fmtBytes(v.size)}</span><small>${v.connections ? plural(v.connections, "conn") : ""}</small></div>`).join("")}</div>` : ""}
+    <div class="dbsparks"><div><div class="spark-l">Connections · ${span}${peak ? ` · peak ${peak}` : ""}</div>${spark(d.hist?.connections)}</div>
+      <div><div class="spark-l">Transactions / s · ${span}</div>${spark(d.hist?.tps)}</div></div>
   </div>`;
+}
+
+// Every database on every server, so a server with 20+ databases is easy to scan
+let dbListSrv = "", dbListSort = "size", dbListDir = -1, dbListAll = false;
+const DB_COLS = [["name", "Database"], ["server", "Server"], ["size", "Size", 1], ["growth", "Growth", 1], ["connections", "Connections", 1],
+  ["tps", "Transactions / s", 1], ["cacheHit", "Cache hit", 1], ["rollbacksPerMin", "Rollbacks / min", 1], ["deadlocks", "Deadlocks", 1], ["tempPerMin", "Temp files / min", 1]];
+function dbListHtml(instances) {
+  const servers = instances.filter((d) => Object.keys(d.databases || {}).length);
+  if (!servers.length) return "";
+  if (dbListSrv && !servers.some((d) => dbKey(d) === dbListSrv)) dbListSrv = "";
+  const rows = servers.filter((d) => !dbListSrv || dbKey(d) === dbListSrv)
+    .flatMap((d) => Object.entries(d.databases).map(([name, v]) => ({ ...v, name, server: d.name, key: dbKey(d), replica: d.replica })));
+  const get = (r) => dbListSort === "name" || dbListSort === "server" ? String(r[dbListSort]).toLowerCase() : r[dbListSort] ?? -Infinity;
+  rows.sort((a, b) => (get(a) < get(b) ? -1 : get(a) > get(b) ? 1 : 0) * dbListDir || (b.size || 0) - (a.size || 0));
+  const biggest = Math.max(1, ...rows.map((r) => r.size || 0)), limit = dbListAll ? rows.length : 25;
+  const growth = (r) => r.growth == null ? '<span class="muted">–</span>'
+    : `<span class="${r.growth > 0 && r.size && r.growth / r.size > 0.05 ? "hot" : r.growth ? "" : "muted"}">${r.growth > 0 ? "+" : r.growth < 0 ? "−" : ""}${r.growth ? fmtBytes(Math.abs(r.growth)) : "0"}</span><small>in ${fmtAge(r.growthOver)}</small>`;
+  const head = DB_COLS.filter(([k]) => k !== "server" || !dbListSrv).map(([k, l, num]) =>
+    `<th class="${num ? "num " : ""}sortable" data-dbcol="${k}" aria-sort="${dbListSort === k ? (dbListDir < 0 ? "descending" : "ascending") : "none"}">${l}${dbListSort === k ? (dbListDir < 0 ? " ↓" : " ↑") : ""}</th>`).join("");
+  const seg = servers.length > 1 ? `<div class="seg" role="group" aria-label="Server"><button data-dblistsrv="" aria-pressed="${!dbListSrv}">All</button>${servers.map((d) =>
+    `<button data-dblistsrv="${esc(dbKey(d))}" aria-pressed="${dbListSrv === dbKey(d)}">${esc(d.name)}</button>`).join("")}</div>` : "";
+  return `<div class="card" id="dbAll" style="margin-bottom:16px"><div class="card-h"><h2>All databases</h2><span class="muted">${plural(rows.length, "database")}${dbListSrv ? "" : ` on ${plural(servers.length, "server")}`}</span><span class="grow"></span>${seg}</div>
+    <p class="explain">Click a column to sort. <b>Cache hit</b> below 95% means many reads go to disk. <b>Temp files</b> are queries spilling to disk because they ran out of <code>work_mem</code>. <b>Growth</b> covers up to the last 24 hours. Rates fill in after the second check.</p>
+    <div class="tablewrap"><table class="mini-table compact dblist"><thead><tr>${head}</tr></thead><tbody>
+    ${rows.slice(0, limit).map((r) => `<tr><td><b>${esc(r.name)}</b></td>${dbListSrv ? "" : `<td>${esc(r.server)}<small>${r.replica ? "replica" : "primary"}</small></td>`}
+      <td class="num"><div class="sizecell"><div class="ub"><i style="width:${Math.max(1, (r.size || 0) / biggest * 100)}%"></i></div>${fmtBytes(r.size)}</div></td>
+      <td class="num">${growth(r)}</td>
+      <td class="num ${r.connections ? "" : "muted"}">${r.connections ?? "–"}</td>
+      <td class="num ${r.tps ? "" : "muted"}">${r.tps != null ? r.tps.toFixed(r.tps < 10 ? 1 : 0) : "–"}</td>
+      <td class="num ${r.cacheHit != null && r.cacheHit < 95 ? "hot" : "muted"}">${r.cacheHit != null ? r.cacheHit.toFixed(1) + "%" : "–"}</td>
+      <td class="num ${r.rollbacksPerMin ? "" : "muted"}">${r.rollbacksPerMin ?? "–"}</td>
+      <td class="num ${r.newDeadlocks ? "hot" : r.deadlocks ? "" : "muted"}">${r.deadlocks ?? "–"}${r.newDeadlocks ? `<small>${r.newDeadlocks} new</small>` : ""}</td>
+      <td class="num ${r.tempPerMin ? "hot" : "muted"}">${r.tempPerMin == null ? "–" : r.tempPerMin ? fmtBytes(r.tempPerMin) : "none"}</td></tr>`).join("")}
+    </tbody></table></div>
+    ${rows.length > 25 ? `<div class="card-foot"><button class="linkbtn" data-dbmore>${dbListAll ? "Show fewer" : `Show all ${rows.length}`}</button></div>` : ""}</div>`;
 }
 
 function dbSetupHtml(sqlMissing) {
@@ -1851,16 +1914,17 @@ function renderDatabases() {
   const probs = dbProblems();
   $("dbProblems").innerHTML = probs.length ? `<div class="card" style="margin-bottom:16px"><div class="list">${findingsHtml(probs)}</div></div>` : "";
   if (!db?.checkedAt) {
-    $("dbCards").innerHTML = "";
+    $("dbCards").innerHTML = $("dbList").innerHTML = "";
     $("dbDetail").innerHTML = `<div class="card"><div class="empty"><b>Checking the databases…</b>This takes a few seconds after KubePulse starts.</div></div>`;
     return;
   }
   if (!db.enabled) {
-    $("dbCards").innerHTML = "";
+    $("dbCards").innerHTML = $("dbList").innerHTML = "";
     $("dbDetail").innerHTML = `<div class="card"><div class="card-h"><h2>No databases yet</h2></div>${dbSetupHtml(false)}</div>`;
     return;
   }
   $("dbCards").innerHTML = db.instances.map(dbCard).join("");
+  $("dbList").innerHTML = dbListHtml(db.instances);
   const sqlDbs = db.instances.filter((d) => d.apps || d.statements || d.statementsError);
   if (!sqlDbs.length) {
     $("dbDetail").innerHTML = `<div class="card"><div class="card-h"><h2>Slow queries and connections per app</h2></div>${dbSetupHtml(true)}</div>`;
@@ -1926,6 +1990,11 @@ function renderDatabases() {
 
 document.addEventListener("click", (e) => {
   const sel = e.target.closest("[data-dbsel]"), sort = e.target.closest("[data-dbsort]"), sql = e.target.closest(".sql");
+  const list = e.target.closest("[data-dblist]"), col = e.target.closest("[data-dbcol]"), srv = e.target.closest("[data-dblistsrv]");
+  if (list) { dbListSrv = list.dataset.dblist; renderDatabases(); $("dbAll")?.scrollIntoView({ behavior: "smooth", block: "start" }); return; }
+  if (col) { const k = col.dataset.dbcol; dbListDir = dbListSort === k ? -dbListDir : ["name", "server", "cacheHit"].includes(k) ? 1 : -1; dbListSort = k; renderDatabases(); return; }
+  if (srv) { dbListSrv = srv.dataset.dblistsrv; renderDatabases(); return; }
+  if (e.target.closest("[data-dbmore]")) { dbListAll = !dbListAll; renderDatabases(); return; }
   if (sel) { dbSel = sel.dataset.dbsel; renderDatabases(); }
   else if (sort && !sort.disabled) { dbSort = sort.dataset.dbsort; renderDatabases(); }
   else if (sql) { const q = sql.dataset.sql; dbOpen.has(q) ? dbOpen.delete(q) : dbOpen.add(q); sql.classList.toggle("open"); }

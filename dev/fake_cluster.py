@@ -301,6 +301,22 @@ class Webhook(BaseHTTPRequestHandler):
 # ---------- PostgreSQL: a postgres_exporter and a tiny server that answers KubePulse's own queries ----------
 
 DBS = {"payments": 2.1e9, "orders": 6.4e9, "keycloak": 0.3e9, "postgres": 8e6}
+# Many small databases on one server, like a shared QA instance
+DBS.update({name: size for name, size in zip(
+    ["billing", "inventory", "audit", "reports", "notifications", "search", "analytics", "crm", "scheduler", "lab", "pharmacy",
+     "radiology", "bloodbank", "mirth", "rcm", "documents", "consent", "portal", "telemetry"],
+    [10.7e9, 8.1e9, 1.0e9, 636e6, 382e6, 210e6, 4.4e9, 95e6, 31e6, 1.6e9, 720e6, 2.9e9, 22e6, 640e6, 380e6, 3.3e9, 12e6, 150e6, 1.2e9])})
+DB_RATES = {"payments": 180, "orders": 90, "billing": 120, "analytics": 40, "reports": 15, "lab": 25}
+
+
+def db_counters(db, up, scale=1.0):
+    """Growing pg_stat_database counters; analytics misses the cache, reports spills to temp files, orders grows."""
+    rate = DB_RATES.get(db, 2) * scale
+    miss = 0.25 if db == "analytics" else 0.01
+    return {"xact_commit": int(5e6 + rate * up), "xact_rollback": int(2e3 + rate * up / (40 if db == "billing" else 400)),
+            "blks_hit": int(9e8 + rate * 60 * up), "blks_read": int(4e6 + rate * 60 * miss * up),
+            "deadlocks": 30 if db == "billing" else 0, "temp_bytes": int(up * 2e6) if db == "reports" else 0,
+            "size": int(DBS[db] + (up * 4e5 if db == "orders" else 0))}
 
 
 def exporter_metrics(replica):
@@ -311,15 +327,12 @@ def exporter_metrics(replica):
              f"pg_replication_lag_seconds {0.4 + 2 * random.random() if replica else 0}"]
     for db, size in DBS.items():
         busy = 0 if replica else {"payments": 3, "orders": 2}.get(db, 0)
-        for state, n in (("active", busy), ("idle", 4 if replica else 10), ("idle in transaction", 0)):
+        idle = (4 if replica else 10) if db in ("payments", "orders", "keycloak") else int(db in ("billing", "lab"))
+        for state, n in (("active", busy), ("idle", idle), ("idle in transaction", 0)):
             lines.append(f'pg_stat_activity_count{{datname="{db}",state="{state}"}} {n if db != "postgres" else 0}')
-        rate = (180 if db == "payments" else 90 if db == "orders" else 4) * (0.3 if replica else 1)
-        lines += [f'pg_database_size_bytes{{datname="{db}"}} {size}',
-                  f'pg_stat_database_xact_commit{{datname="{db}"}} {int(5e6 + rate * up)}',
-                  f'pg_stat_database_xact_rollback{{datname="{db}"}} {int(2e3 + rate * up / 400)}',
-                  f'pg_stat_database_blks_hit{{datname="{db}"}} {int(9e8 + rate * 60 * up)}',
-                  f'pg_stat_database_blks_read{{datname="{db}"}} {int(4e6 + rate * 0.6 * up)}',
-                  f'pg_stat_database_deadlocks{{datname="{db}"}} 3', f'pg_stat_database_temp_bytes{{datname="{db}"}} 0']
+        c = db_counters(db, up, 0.3 if replica else 1)
+        lines += [f'pg_database_size_bytes{{datname="{db}"}} {c.pop("size")}']
+        lines += [f'pg_stat_database_{k}{{datname="{db}"}} {v}' for k, v in c.items()]
     lines += ['pg_locks_count{datname="payments",mode="rowexclusivelock"} 6', 'pg_locks_count{datname="payments",mode="sharelock"} 1']
     return "\n".join(lines) + "\n"
 
@@ -371,9 +384,8 @@ def fake_sql(q):
     if "server_version" in q:
         return [{"version": "16.3", "max_conn": "100", "uptime": str(int(86400 * 9 + up)), "replica": "f", "lag": "0"}]
     if "pg_stat_database" in q:
-        return [{"datname": db, "numbackends": "0", "xact_commit": str(int(5e6 + 250 * up)), "xact_rollback": str(int(2e3 + up / 2)),
-                 "blks_hit": str(int(9e8 + 15000 * up)), "blks_read": str(int(4e6 + 120 * up)), "deadlocks": "3", "temp_bytes": "0", "size": str(int(size))}
-                for db, size in DBS.items()]
+        return [{"datname": db, "numbackends": str({"payments": 13, "orders": 12, "billing": 9}.get(db, 1)),
+                 **{k: str(v) for k, v in db_counters(db, up).items()}} for db in DBS]
     if "pg_stat_activity" in q:
         return fake_sessions()
     if "pg_stat_statements" in q:

@@ -48,7 +48,8 @@ Kubernetes. The screenshots use demo data.
 - Optional **sound**: a monitor beep when a pod starts failing, a flatline when a node goes down, a chime when everything recovers. Browsers only allow audio after a click, so after a reload the wallboard shows *Tap to enable sound*
 
 **Watch your PostgreSQL databases** 🐘
-- A **Databases** page with a card per server: up or down, connections used of the maximum (active, idle, idle in transaction), transactions per second, cache hit rate, replication lag on replicas, rollbacks, deadlocks and the size of each database
+- A **Databases** page with a card per server: up or down, connections used of the maximum (active, idle, idle in transaction), transactions per second, cache hit rate, replication lag on replicas, rollbacks, deadlocks, temp-file spills, locks held, total size, the largest databases and trend charts for connections and transactions
+- An **All databases** table listing every database on every server, filterable by server and sortable by any column: size and growth over the last day, connections, transactions per second, cache hit, rollbacks, deadlocks and temp files. Handy on a shared server with 20+ databases
 - **Connections by app**: every connection matched to the pod and workload it comes from, so you see each app's connection pool from the database side: how many it holds, how many are busy, idle, stuck in an open transaction or waiting on a lock
 - **Running now**: queries running for a second or more, transactions left open, and lock waits with who is blocking whom
 - **Slow queries** from `pg_stat_statements`: by total time, by time per call, or for just the last hour, with calls, slowest run, share of all database time and cache hit rate
