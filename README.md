@@ -28,7 +28,7 @@ Kubernetes. The screenshots use demo data.
 
 **Understand why a pod is failing**
 - Click any pod for a plain-language reason (OOMKilled, image pull errors, failed scheduling, crash loops), its events, and the logs of the current or **crashed** run
-- **Diagnose** (AI) works like an on-call engineer. It reads the logs, checks the owning Deployment and its recent rollouts, compares sibling pods, checks the node, services / endpoints and the ConfigMaps and volumes the pod uses, then reports the verdict, evidence, impact and the exact fix. Read-only; passwords, tokens and keys are removed before anything is sent
+- **Diagnose** (AI) works like an on-call engineer. It reads the logs, checks the owning Deployment and its recent rollouts, compares sibling pods, checks the node, services / endpoints, the ConfigMaps and volumes the pod uses and (for database errors) the PostgreSQL connections, locks and slow queries, then reports the verdict, evidence, impact and the exact fix. Read-only; passwords, tokens and keys are removed before anything is sent
 
 **Spot patterns**
 - **Insights** starts with a plain-language *Summary*, most serious first, each item linked to the pod or page to look at. Below it:
@@ -40,12 +40,20 @@ Kubernetes. The screenshots use demo data.
 - **Rollout tracking**: every new version of a Deployment, StatefulSet or DaemonSet, with what changed (image `2.4.0 → 2.4.1`, resources, environment, restart) and how its pods are doing now. Rollouts show as dashed lines on the restart timeline, and a crashing pod's alert says "🚀 Rolled out 6m ago · app: 2.4.0 → 2.4.1"
 - Mattermost gets 🚀 when a rollout starts and ⚠️ when one is followed by failing pods or doesn't finish in 15 minutes
 
-**A daily or weekly digest in Mattermost** 📬: uptime, restarts (and which workloads), rollouts, what's broken right now, certificates and volumes running out, the busiest pods, and waste worth fixing. Sent at `DIGEST_TIME` in `DIGEST_TIMEZONE`; **Send today's digest now** on the Events & alerts page
+**A daily or weekly digest in Mattermost** 📬: uptime, restarts (and which workloads), rollouts, what's broken right now, certificates and volumes running out, the busiest pods, waste worth fixing and a 🐘 **Databases** part (each server's peak connections over the period, replica lag now and the three heaviest queries of the last hour, values removed; left out when no database is monitored). Sent at `DIGEST_TIME` in `DIGEST_TIMEZONE`; **Send today's digest now** on the Events & alerts page
 
 **Get told when something breaks**
 - **Mattermost alerts** for failing pods, pods stuck pending or not ready, OOM kills, nodes going NotReady, certificates about to expire, volumes filling up, and recoveries. Each problem alerts once; flapping problems are held back. Every kind of problem has its own emoji (🧠 out of memory, 🔁 crash loop, 📦 image pull, ⏳ pending, 🖥️ node, 🔐 certificate, 💾 volume), and recoveries arrive as ✅ All clear 🎉. Alerts link straight to the pod in KubePulse and use readable reasons ("Startup probe failed: /actuator/health timed out", not raw messages with pod IPs). When a pod goes into **CrashLoopBackOff** or is **OOMKilled**, a short 🤖 **AI analysis** follows the alert: the likely cause, the log line that shows it, and the fix
-- **Wallboard / NOC mode** for an office TV at `/wall`: big status with Kubi, a heartbeat line, the map, a 24-hour restart view and the **top CPU and memory users of the last 24 hours** rotating, active incidents, and the whole screen turns red when something is critical. If the data goes stale, the board greys out behind a clear warning instead of showing old numbers as live
+- **Wallboard / NOC mode** for an office TV at `/wall`: big status with Kubi, a heartbeat line, the map, a 24-hour restart view and the **top CPU and memory users of the last 24 hours** rotating, active incidents, a 🐘 **database tile** per PostgreSQL server (up or down, connections used of the maximum, replica lag; amber or red on the same rules as the Databases page), and the whole screen turns red when something is critical. The public wallboard only gets those numbers and a problem count, never queries, app names or connection details. If the data goes stale, the board greys out behind a clear warning instead of showing old numbers as live
 - Optional **sound**: a monitor beep when a pod starts failing, a flatline when a node goes down, a chime when everything recovers. Browsers only allow audio after a click, so after a reload the wallboard shows *Tap to enable sound*
+
+**Watch your PostgreSQL databases** 🐘
+- A **Databases** page with a card per server: up or down, connections used of the maximum (active, idle, idle in transaction), transactions per second, cache hit rate, replication lag on replicas, rollbacks, deadlocks and the size of each database
+- **Connections by app**: every connection matched to the pod and workload it comes from, so you see each app's connection pool from the database side: how many it holds, how many are busy, idle, stuck in an open transaction or waiting on a lock
+- **Running now**: queries running for a second or more, transactions left open, and lock waits with who is blocking whom
+- **Slow queries** from `pg_stat_statements`: by total time, by time per call, or for just the last hour, with calls, slowest run, share of all database time and cache hit rate
+- Mattermost alerts (🐘) when a database is down, connections pass 85% of the maximum, a replica falls behind, a query runs over 5 minutes, a transaction is left open, or sessions wait on locks. They also show in the Insights summary, and **Diagnose** checks the databases when a pod's logs point at them
+- Health comes from the `postgres_exporter` sidecar (found automatically, no password needed). Connections per app, running queries and slow queries need a read-only `pg_monitor` user in `PG_URLS`. Values in queries (names, emails, ids) are replaced by `?` before they're shown, alerted or sent to the AI
 
 **Maintenance mode** 🛠️
 - Start it from the sidebar for 30 minutes to 8 hours, until a set time, or **until you stop it**, for the whole cluster or chosen namespaces, with a reason
@@ -55,7 +63,7 @@ Kubernetes. The screenshots use demo data.
 **Signed in, except the TV**
 - A sign-in page protects everything: pods, logs, events and diagnosis. It's a single clean card with Kubi peeking over the top: he greets you, covers his eyes while you type your password, looks sad when it's wrong and celebrates when you're in.
 
-**Keyboard**: `/` search · `p` problems only · `t` theme · `f` wallboard · `s` sound · `1`–`5` pages · `?` help
+**Keyboard**: `/` search · `p` problems only · `t` theme · `f` wallboard · `s` sound · `1`–`6` pages · `?` help
 
 ## Screenshots
 
@@ -125,6 +133,13 @@ Set these in the Deployment in `kubepulse.yaml`. Every setting is optional.
 | `DIGEST_TIMEZONE` | `UTC` | Time zone for `DIGEST_TIME`, e.g. `Asia/Kolkata` |
 | `AI_ALERTS` | `true` | Post a short AI analysis after CrashLoopBackOff alerts (needs `OPENAI_API_KEY`) |
 | `AI_ALERTS_PER_HOUR` | `10` | Most AI analyses sent per hour, so a big outage can't run up the bill |
+| `DB_MONITORING` | `on` | `off` turns the Databases page and database alerts off |
+| `PG_EXPORTERS` | auto | postgres_exporter URLs, comma-separated. Empty = find Services on port 9187 (e.g. Bitnami's `postgresql-primary-metrics`) |
+| `DB_POLL_SECONDS` | `30` | How often KubePulse checks the databases |
+| `DB_CONN_WARN_PERCENT` | `85` | Alert when a server uses this share of `max_connections` |
+| `DB_LAG_WARN_SECONDS` | `60` | Alert when a replica is this far behind |
+| `DB_LONG_QUERY_MINUTES` | `5` | Alert on queries running, transactions left open, or lock waits longer than this |
+| `DB_IGNORE_APPS` | `pg_dump,pg_basebackup,pg_restore` | `application_name`s whose long queries are expected, such as backups |
 
 Secrets go in the `kubepulse-secrets` Secret:
 
@@ -135,12 +150,34 @@ Secrets go in the `kubepulse-secrets` Secret:
 | `SESSION_SECRET` | Any long random string (`openssl rand -hex 32`). Keeps people signed in when KubePulse restarts |
 | `MATTERMOST_WEBHOOK_URL` | Incoming webhook for alerts. Use **Send test message** on the Events & alerts page to check it |
 | `OPENAI_API_KEY` | Turns on AI diagnosis |
+| `PG_URLS` | Read-only PostgreSQL connections for slow queries, running queries and connections per app, comma-separated: `postgresql://kubepulse:password@postgresql-primary.prod.svc:5432/postgres`. Add `?sslmode=require` to insist on TLS (the default `prefer` uses it when offered). To name a server yourself, put `namespace/name=` in front |
+
+### PostgreSQL
+
+KubePulse reads the `postgres_exporter` Services on its own. For the rest, create a monitoring user
+on the primary and put it in `PG_URLS` (one entry per server; the replica can use the same user):
+
+```sql
+CREATE ROLE kubepulse LOGIN PASSWORD 'choose-one';
+GRANT pg_monitor TO kubepulse;
+```
+
+Slow queries need `pg_stat_statements`. On the Bitnami chart, set
+`primary.extendedConfiguration: "shared_preload_libraries = 'pgaudit,pg_stat_statements'"` (keep
+anything already in the list), let the primary restart, then run
+`CREATE EXTENSION pg_stat_statements;` in the database `PG_URLS` points at. The Databases page
+tells you if it's missing.
+
+KubePulse signs in with SCRAM-SHA-256 (or MD5), and every query it sends runs in a read-only
+transaction with a 5-second statement timeout. If the database has a NetworkPolicy, allow port
+5432 (and 9187 for the exporter) from the `kubepulse` namespace.
 
 **Using Claude instead of OpenAI**: Anthropic offers an OpenAI-compatible endpoint. Set
 `OPENAI_BASE_URL=https://api.anthropic.com/v1`, an Anthropic key in `OPENAI_API_KEY`, and
 `OPENAI_MODEL=claude-sonnet-5`. (Not tested yet.)
 
-The pod needs outbound HTTPS to Mattermost and to the AI provider, and access to Prometheus inside the cluster for volume usage.
+The pod needs outbound HTTPS to Mattermost and to the AI provider, and access to Prometheus inside the cluster for volume usage
+(and to PostgreSQL on 5432 and its exporter on 9187, for the Databases page).
 
 ## Exposing it
 
@@ -173,12 +210,14 @@ Kubernetes API ──► background poller (every POLL_SECONDS) ──► in-mem
                          │                                  └─► trimmed copy ──► public wallboard (/wall)
                          ├─► trend history, insights  (small emptyDir, survives restarts)
                          └─► Mattermost alerts
+postgres_exporter, PG_URLS ──► database thread (every DB_POLL_SECONDS) ──► same snapshot and alerts
 ```
 
 - One background thread reads the cluster from the API server's cache (`resourceVersion=0`); every browser gets the same in-memory result, so opening more tabs adds no load on the cluster
 - Browsers stop polling when their tab is hidden; an unchanged snapshot costs a 304
 - Certificates and volumes are refreshed every 5 minutes
 - Diagnosis runs as a tool-calling loop over the read-only tools in `app.py`
+- Databases are checked in their own thread, so a slow or unreachable database never delays the cluster view. KubePulse speaks the PostgreSQL protocol itself (about 150 lines), so it still needs no driver
 
 ## Development
 
@@ -191,13 +230,14 @@ K8S_API=http://127.0.0.1:8001 DATA_DIR=/tmp KUBEPULSE_USERS=admin:dev python3 ap
 ```
 
 Without a cluster, `dev/fake_cluster.py` serves a fake Kubernetes API with failing pods, a scripted
-AI model and a Mattermost webhook that prints what it receives. `dev/screenshots.mjs` retakes the
+AI model, a PostgreSQL primary and replica with exporters, and a Mattermost webhook that prints what it receives. `dev/screenshots.mjs` retakes the
 README screenshots with headless Chrome:
 
 ```bash
 python3 dev/fake_cluster.py &
 K8S_API=http://127.0.0.1:8911 DATA_DIR=/tmp KUBEPULSE_USERS=admin:demo \
-  OPENAI_API_KEY=x OPENAI_BASE_URL=http://127.0.0.1:8912/v1 MATTERMOST_WEBHOOK_URL=http://127.0.0.1:8913/hook python3 app.py
+  OPENAI_API_KEY=x OPENAI_BASE_URL=http://127.0.0.1:8912/v1 MATTERMOST_WEBHOOK_URL=http://127.0.0.1:8913/hook \
+  PG_URLS=prod/postgres=postgresql://kubepulse:demo@127.0.0.1:8914/postgres python3 app.py
 node dev/screenshots.mjs docs/screenshots http://localhost:8080
 ```
 
@@ -210,11 +250,12 @@ docker buildx build --platform linux/amd64,linux/arm64 -t <you>/kubepulse:<tag> 
 
 ## Limitations
 
-- Trend history, the uptime score, restarts, rollouts and the digest date are kept on a 1 GiB volume (`kubepulse-data`), so they survive restarts and the pod moving. The 7-day trend fills in as KubePulse runs
+- Trend history, the uptime score, restarts, rollouts, each database's daily peak connections and the digest date are kept on a 1 GiB volume (`kubepulse-data`), so they survive restarts and the pod moving. The 7-day trend fills in as KubePulse runs
 - Rollouts are detected while KubePulse is running; a rollout that happens while it's down isn't recorded
 - One KubePulse per cluster
 - Certificate expiry comes from cert-manager only, because KubePulse doesn't read TLS Secrets
 - metrics-server is needed for CPU and memory (on by default in AKS; install it on EKS)
+- Databases: PostgreSQL only for now. Slow-query history is the last hour (from KubePulse's own samples) plus everything since `pg_stat_statements` was last reset; it isn't kept across KubePulse restarts
 
 ---
 

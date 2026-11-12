@@ -1,16 +1,19 @@
 """A fake cluster for developing KubePulse without a real one.
 
 Serves a small Kubernetes API (with failing pods, events, logs, workloads, services, volumes,
-certificates and a Prometheus), a scripted OpenAI-compatible model and a Mattermost webhook
-that prints what it receives.
+certificates, a Prometheus and a PostgreSQL primary and replica with their exporters), a scripted
+OpenAI-compatible model and a Mattermost webhook that prints what it receives.
 
     python3 dev/fake_cluster.py
     K8S_API=http://127.0.0.1:8911 DATA_DIR=/tmp OPENAI_API_KEY=x OPENAI_BASE_URL=http://127.0.0.1:8912/v1 \\
-      MATTERMOST_WEBHOOK_URL=http://127.0.0.1:8913/hook python3 app.py
+      MATTERMOST_WEBHOOK_URL=http://127.0.0.1:8913/hook PG_URLS=prod/postgres=postgresql://kubepulse:demo@127.0.0.1:8914/postgres \\
+      python3 app.py
 """
 import json
 import os
 import random
+import socketserver
+import struct
 import threading
 import time
 from datetime import datetime, timedelta, timezone
@@ -181,7 +184,11 @@ class Kubernetes(BaseHTTPRequestHandler):
         if path == "/api/v1/services":
             return self.send({"items": [{"metadata": {"name": n, "namespace": ns}, "spec": {"type": "ClusterIP", "ports": [{"port": port, "name": "web"}]}}
                                         for ns, n, port in (("prod", "api", 80), ("monitoring", "prometheus-operated", 9090),
-                                                            ("monitoring", "prometheus-prometheus-node-exporter", 9100))]})
+                                                            ("monitoring", "prometheus-prometheus-node-exporter", 9100),
+                                                            ("prod", "postgres-metrics", 9187), ("prod", "postgres-read-metrics", 9187))]})
+        if path in ("/api/v1/namespaces/prod/services/postgres-metrics:9187/proxy/metrics",
+                    "/api/v1/namespaces/prod/services/postgres-read-metrics:9187/proxy/metrics"):
+            return self.send(exporter_metrics(replica="read" in path), ctype="text/plain")
         if path.startswith("/api/v1/namespaces/monitoring/services/prometheus-operated:9090/proxy/api/v1/query"):
             used = "used" in q.get("query", [""])[0]
             return self.send({"status": "success", "data": {"resultType": "vector", "result": [
@@ -291,8 +298,123 @@ class Webhook(BaseHTTPRequestHandler):
         self.wfile.write(b"ok")
 
 
+# ---------- PostgreSQL: a postgres_exporter and a tiny server that answers KubePulse's own queries ----------
+
+DBS = {"payments": 2.1e9, "orders": 6.4e9, "keycloak": 0.3e9, "postgres": 8e6}
+
+
+def exporter_metrics(replica):
+    """What postgres_exporter (port 9187) shows for the primary or the read replica, counters growing over time."""
+    up = time.time() - STARTED
+    lines = ['pg_up 1', 'pg_static{short_version="16.3.0",version="PostgreSQL 16.3"} 1', f"pg_settings_max_connections {200 if replica else 100}",
+             f"pg_postmaster_start_time_seconds {STARTED - 86400 * 9}", f"pg_replication_is_replica {int(replica)}",
+             f"pg_replication_lag_seconds {0.4 + 2 * random.random() if replica else 0}"]
+    for db, size in DBS.items():
+        busy = 0 if replica else {"payments": 3, "orders": 2}.get(db, 0)
+        for state, n in (("active", busy), ("idle", 4 if replica else 10), ("idle in transaction", 0)):
+            lines.append(f'pg_stat_activity_count{{datname="{db}",state="{state}"}} {n if db != "postgres" else 0}')
+        rate = (180 if db == "payments" else 90 if db == "orders" else 4) * (0.3 if replica else 1)
+        lines += [f'pg_database_size_bytes{{datname="{db}"}} {size}',
+                  f'pg_stat_database_xact_commit{{datname="{db}"}} {int(5e6 + rate * up)}',
+                  f'pg_stat_database_xact_rollback{{datname="{db}"}} {int(2e3 + rate * up / 400)}',
+                  f'pg_stat_database_blks_hit{{datname="{db}"}} {int(9e8 + rate * 60 * up)}',
+                  f'pg_stat_database_blks_read{{datname="{db}"}} {int(4e6 + rate * 0.6 * up)}',
+                  f'pg_stat_database_deadlocks{{datname="{db}"}} 3', f'pg_stat_database_temp_bytes{{datname="{db}"}} 0']
+    lines += ['pg_locks_count{datname="payments",mode="rowexclusivelock"} 6', 'pg_locks_count{datname="payments",mode="sharelock"} 1']
+    return "\n".join(lines) + "\n"
+
+
+STATEMENTS = [   # query, database, calls per second, mean ms
+    ("SELECT o.id, o.status, o.total FROM orders o JOIN customers c ON c.id = o.customer_id WHERE c.email = $1 ORDER BY o.created_at DESC LIMIT $2", "orders", 14, 38.5),
+    ("SELECT date_trunc($1, created_at) AS day, sum(total) FROM orders WHERE created_at >= $2 GROUP BY 1 ORDER BY 1", "orders", 0.02, 9120.0),
+    ("UPDATE payments SET status = $1, updated_at = now() WHERE id = $2", "payments", 22, 4.2),
+    ("INSERT INTO payment_events (payment_id, kind, payload) VALUES ($1, $2, $3)", "payments", 30, 1.1),
+    ("SELECT * FROM payments WHERE merchant_id = $1 AND status = $2", "payments", 6, 212.0),
+    ("SELECT count(*) FROM orders WHERE status = $1", "orders", 0.5, 1430.0),
+    ("SELECT id, name, price FROM products WHERE id = ANY($1)", "orders", 40, 0.6),
+    ("SELECT u.* FROM user_entity u WHERE u.realm_id = $1 AND u.username = $2", "keycloak", 3, 2.4),
+    ("DELETE FROM sessions WHERE expires_at < now()", "payments", 0.01, 18200.0),
+    ("SELECT p.*, m.name FROM payments p JOIN merchants m ON m.id = p.merchant_id WHERE p.created_at > $1", "payments", 1.2, 640.0),
+]
+
+
+def fake_sessions():
+    """Connections from the fake pods: each app's pool, a slow report, an open transaction and a lock wait."""
+    pods = {}
+    for p in PODS:
+        if p["metadata"]["namespace"] == "prod" and p["status"].get("podIP"):
+            pods.setdefault(p["metadata"]["labels"]["app"], []).append(p["status"]["podIP"])
+    rows, pid, up = [], 4100, time.time() - STARTED
+    def add(app, ip, db, state, age, query, wait=None, blocked="", app_name="PostgreSQL JDBC Driver"):
+        nonlocal pid
+        pid += 1
+        rows.append({"pid": pid, "datname": db, "usename": app.replace("-", "_"), "app": app_name, "addr": ip, "state": state,
+                     "conn_age": 3000, "xact_age": age if state != "idle" else None, "query_age": age, "state_age": age,
+                     "wait_event_type": wait and wait.split(":")[0], "wait_event": wait and wait.split(":")[1], "blocked_by": blocked, "query": query})
+        return pid
+    for app, db, per_pod in (("payments-api", "payments", 10), ("checkout", "orders", 8), ("billing", "payments", 5), ("catalog", "orders", 4), ("auth", "keycloak", 3)):
+        for ip in pods.get(app, []):
+            for k in range(per_pod):
+                add(app, ip, db, "active" if k == 0 else "idle", 0.05 if k == 0 else 4, STATEMENTS[0][0] if db == "orders" else STATEMENTS[2][0])
+    if pods.get("billing"):
+        holder = add("billing", pods["billing"][0], "payments", "idle in transaction", 420 + up, "UPDATE payments SET status = 'settled' WHERE id = 99812")
+        add("payments-api", (pods.get("payments-api") or ["10.0.0.1"])[0], "payments", "active", 95 + up, "UPDATE payments SET status = 'failed' WHERE id = 99812",
+            wait="Lock:transactionid", blocked=f"{{{holder}}}")
+    if pods.get("reports"):
+        add("reports", pods["reports"][0], "orders", "active", 540 + up, STATEMENTS[1][0].replace("$1", "'day'").replace("$2", "'2026-01-01'"), wait="IO:DataFileRead")
+    add("dba", "10.0.5.9", "orders", "idle", 1800, "select count(*) from orders", app_name="psql")
+    return rows
+
+
+def fake_sql(q):
+    up = time.time() - STARTED
+    if "server_version" in q:
+        return [{"version": "16.3", "max_conn": "100", "uptime": str(int(86400 * 9 + up)), "replica": "f", "lag": "0"}]
+    if "pg_stat_database" in q:
+        return [{"datname": db, "numbackends": "0", "xact_commit": str(int(5e6 + 250 * up)), "xact_rollback": str(int(2e3 + up / 2)),
+                 "blks_hit": str(int(9e8 + 15000 * up)), "blks_read": str(int(4e6 + 120 * up)), "deadlocks": "3", "temp_bytes": "0", "size": str(int(size))}
+                for db, size in DBS.items()]
+    if "pg_stat_activity" in q:
+        return fake_sessions()
+    if "pg_stat_statements" in q:
+        return [{"id": str(9000 + i), "datname": db, "usename": "app", "calls": str(int(cps * (40000 + up))), "total": str(cps * (40000 + up) * mean),
+                 "mean": str(mean), "max": str(mean * 6), "rows": str(int(cps * 40000)), "hit": str(int(9e5 / (1 + mean / 50))), "rd": str(int(mean * 40)),
+                 "tmp": "2048" if mean > 5000 else "0", "query": text} for i, (text, db, cps, mean) in enumerate(STATEMENTS)]
+    return []
+
+
+class FakePostgres(socketserver.BaseRequestHandler):
+    """Just enough of the PostgreSQL wire protocol for KubePulse: no TLS, any password, canned rows."""
+    def msg(self, kind, body):
+        self.request.sendall(kind + struct.pack("!i", len(body) + 4) + body)
+
+    def handle(self):
+        f = self.request.makefile("rb")
+        size = struct.unpack("!i", f.read(4))[0]
+        if f.read(size - 4) == struct.pack("!i", 80877103):   # SSLRequest: no TLS here
+            self.request.sendall(b"N")
+            f.read(struct.unpack("!i", f.read(4))[0] - 4)
+        self.msg(b"R", struct.pack("!i", 0))
+        self.msg(b"Z", b"I")
+        while True:
+            head = f.read(5)
+            if len(head) < 5 or head[:1] == b"X":
+                return
+            body = f.read(struct.unpack("!i", head[1:])[0] - 4)
+            rows = fake_sql(body.decode())
+            cols = list(rows[0]) if rows else []
+            self.msg(b"T", struct.pack("!h", len(cols)) + b"".join(c.encode() + b"\0" + b"\0" * 18 for c in cols))
+            for r in rows:
+                vals = [None if r[c] is None else str(r[c]).encode() for c in cols]
+                self.msg(b"D", struct.pack("!h", len(vals)) + b"".join(struct.pack("!i", -1) if v is None else struct.pack("!i", len(v)) + v for v in vals))
+            self.msg(b"C", b"SELECT\0")
+            self.msg(b"Z", b"I")
+
+
 if __name__ == "__main__":
+    socketserver.ThreadingTCPServer.allow_reuse_address = True
+    threading.Thread(target=socketserver.ThreadingTCPServer(("127.0.0.1", 8914), FakePostgres).serve_forever, daemon=True).start()
     for port, handler in ((8912, Model), (8913, Webhook)):
         threading.Thread(target=ThreadingHTTPServer(("127.0.0.1", port), handler).serve_forever, daemon=True).start()
-    print("fake Kubernetes API on :8911, model on :8912, Mattermost webhook on :8913", flush=True)
+    print("fake Kubernetes API on :8911, model on :8912, Mattermost webhook on :8913, PostgreSQL on :8914", flush=True)
     ThreadingHTTPServer(("127.0.0.1", 8911), Kubernetes).serve_forever()

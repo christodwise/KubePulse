@@ -28,6 +28,9 @@ stringData:
   # Keeps people signed in across restarts. Any long random string, e.g. from: openssl rand -hex 32
   SESSION_SECRET: ""
   MATTERMOST_WEBHOOK_URL: ""
+  # PostgreSQL slow queries, running queries and connections per app, through a read-only pg_monitor user
+  # (see README). Comma-separated, e.g. postgresql://kubepulse:password@postgresql-primary.prod.svc:5432/postgres
+  PG_URLS: ""
 ---
 # Read-only. KubePulse can't change anything and can't read Secrets.
 apiVersion: rbac.authorization.k8s.io/v1
@@ -143,6 +146,13 @@ spec:
             # e.g. http://prometheus-operated.monitoring.svc:9090
             - name: PROMETHEUS_URL
               value: ""
+            # PostgreSQL: exporters on port 9187 are found automatically; PG_URLS (in the Secret) adds slow queries
+            - name: DB_CONN_WARN_PERCENT  # alert when a database uses this share of max_connections
+              value: "85"
+            - name: DB_LAG_WARN_SECONDS   # alert when a replica is this far behind
+              value: "60"
+            - name: DB_LONG_QUERY_MINUTES # alert on queries, open transactions and lock waits longer than this
+              value: "5"
           readinessProbe:
             httpGet: { path: /healthz, port: 8080 }
           livenessProbe:

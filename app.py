@@ -15,7 +15,9 @@ import json
 import os
 import re
 import secrets
+import socket
 import ssl
+import struct
 import threading
 import time
 import urllib.error
@@ -25,7 +27,7 @@ from collections import deque
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, quote, urlparse
+from urllib.parse import parse_qs, quote, unquote, urlparse
 
 env = os.getenv
 SA_DIR = Path("/var/run/secrets/kubernetes.io/serviceaccount")
@@ -85,6 +87,20 @@ DATA_DIR = Path(env("DATA_DIR", "/data"))
 PVC_STATS = env("PVC_STATS", "false").lower() == "true"
 # Volume usage comes from Prometheus (kubelet_volume_stats_*). Empty = find it in the cluster automatically.
 PROMETHEUS_URL = env("PROMETHEUS_URL", "").strip().rstrip("/")
+
+# PostgreSQL. postgres_exporter Services (port 9187, e.g. Bitnami's postgresql-primary-metrics) are found automatically.
+# PG_URLS adds slow queries, running queries, locks and connections per app, through a read-only pg_monitor user:
+# "postgresql://kubepulse:password@postgresql-primary.prod.svc:5432/postgres?sslmode=prefer", comma-separated.
+# Put "namespace/name=" in front to name one yourself, e.g. "prod/orders-db=postgresql://...@10.0.0.5/orders".
+PG_URLS = [u.strip() for u in env("PG_URLS", "").split(",") if u.strip()]
+PG_EXPORTERS = [u.strip().rstrip("/") for u in env("PG_EXPORTERS", "").split(",") if u.strip()]   # empty = find them
+DB_MONITORING = env("DB_MONITORING", "on").lower() not in ("off", "false", "0")
+DB_POLL_SECONDS = max(10, int(env("DB_POLL_SECONDS", "30")))
+DB_CONN_WARN_PERCENT = int(env("DB_CONN_WARN_PERCENT", "85"))
+DB_LAG_WARN_SECONDS = int(env("DB_LAG_WARN_SECONDS", "60"))
+DB_LONG_QUERY_MINUTES = float(env("DB_LONG_QUERY_MINUTES", "5"))
+# Apps whose long queries are expected (backups, replication), by application_name
+DB_IGNORE_APPS = {a.strip() for a in env("DB_IGNORE_APPS", "pg_dump,pg_basebackup,pg_restore").split(",") if a.strip()}
 
 # Login. KUBEPULSE_USERS="admin:password,ops:another". Empty = a random admin password, printed once in the log.
 AUTH_ENABLED = env("AUTH", "on").lower() not in ("off", "false", "0")
@@ -275,6 +291,7 @@ def pod_row(p, usage=(None, None)):
         "restarts": sum(c.get("restartCount", 0) for c in cstat),
         "age": age_seconds(meta.get("creationTimestamp")),
         "node": spec.get("nodeName") or "",
+        "ip": status.get("podIP"),
         "cpu": usage[0],
         "mem": usage[1],
         "memLimit": sum(parse_mem(c.get("resources", {}).get("limits", {}).get("memory")) for c in containers) or None,
@@ -411,6 +428,7 @@ class Insights:
         self.peak = {}       # (ns, pod) -> {"cpu": (value, when), "mem": (value, when)}, highest in the last 24 hours
         self.created = {}    # (ns, owner) -> {pod: created at}
         self.ended = {}      # (ns, owner) -> [(created at, ended at)]
+        self.db_peak = {}    # "YYYY-MM-DD" -> {"ns/name": highest connections % that day}, 8 days, for the digest
         self.prev = None     # (ns, pod) -> (restarts, level)
         self.certs = self.pvcs = None
         self.slow_at = self.saved_at = 0.0
@@ -425,6 +443,7 @@ class Insights:
             keep_after = time.time() - HISTORY_POINTS * POLL_SECONDS
             HISTORY.extend(h for h in state.get("history", []) if h[0] > keep_after)
             self.restart_log = [tuple(r) for r in state.get("restarts", []) if time.time() - r[0] < 7 * 86400]
+            self.db_peak = state.get("dbPeak", {})
             ROLLOUTS.load(state)
             DIGEST_SENDER.last = state.get("digestLast", "")
             MAINT.load(state.get("maintenance"))
@@ -440,7 +459,7 @@ class Insights:
             tmp = DATA_DIR / "state.json.tmp"
             tmp.write_text(json.dumps({"timeline": self.timeline, "days": self.days, "history": list(HISTORY),
                                        "restarts": self.restart_log, "rollouts": ROLLOUTS.dump(), "digestLast": DIGEST_SENDER.last,
-                                       "maintenance": MAINT.dump()}))
+                                       "maintenance": MAINT.dump(), "dbPeak": self.db_peak}))
             tmp.replace(DATA_DIR / "state.json")
         except Exception:
             pass  # no writable volume: keep it in memory only
@@ -481,6 +500,15 @@ class Insights:
         for d in sorted(self.days)[:-8]:
             del self.days[d]
         self.restart_log = [r for r in self.restart_log if now - r[0] < 7 * 86400]
+
+        # Highest connections % per database server per day, for the digest
+        peaks = self.db_peak.setdefault(_day(now), {})
+        for d in DATABASES.view().get("instances", []):
+            if d.get("connPercent") is not None:
+                k = db_name(d)
+                peaks[k] = max(peaks.get(k, 0), d["connPercent"])
+        for d in sorted(self.db_peak)[:-8]:
+            del self.db_peak[d]
 
         # Usage per pod: CPU as a moving average, memory as the peak seen
         for k, p in cur.items():
@@ -742,6 +770,617 @@ def pvc_rows(nodes):
             "percent": round(used / cap * 100, 1) if used is not None and cap else None,
         })
     return sorted(rows, key=lambda r: (r["phase"] == "Bound", -(r["percent"] or 0)))
+
+
+# ---------- Databases: PostgreSQL health, connections and slow queries ----------
+
+class PgError(Exception):
+    """An error PostgreSQL itself returned (bad password, missing view...). The connection is still fine."""
+
+
+class Postgres:
+    """A tiny read-only PostgreSQL client: the simple query protocol, SCRAM-SHA-256 / MD5 / password sign-in
+    and optional TLS. Just enough to read the statistics views, so KubePulse needs no database driver."""
+
+    def __init__(self, url):
+        u = urlparse(url)
+        self.host, self.port = u.hostname or "localhost", u.port or 5432
+        self.user, self.password = unquote(u.username or ""), unquote(u.password or "")
+        self.db = unquote(u.path.lstrip("/")) or "postgres"
+        self.sslmode = parse_qs(u.query).get("sslmode", ["prefer"])[0]
+        self.sock = self.f = None
+        self.lock = threading.Lock()
+
+    def close(self):
+        try:
+            if self.sock:
+                self.sock.close()
+        except OSError:
+            pass
+        self.sock = self.f = None
+
+    def _send(self, kind, body):
+        self.sock.sendall(kind + struct.pack("!i", len(body) + 4) + body)
+
+    def _read(self):
+        head = self.f.read(5)
+        if len(head) < 5:
+            raise OSError("the database closed the connection")
+        kind, size = head[:1], struct.unpack("!i", head[1:])[0]
+        return kind, self.f.read(size - 4)
+
+    @staticmethod
+    def _error(data):
+        fields = {f[:1]: f[1:].decode(errors="replace") for f in data.split(b"\0") if f}
+        return fields.get(b"M", "unknown error")
+
+    def _connect(self):
+        sock = socket.create_connection((self.host, self.port), timeout=10)
+        if self.sslmode != "disable":
+            sock.sendall(struct.pack("!ii", 8, 80877103))   # SSLRequest
+            if sock.recv(1) == b"S":
+                ctx = ssl.create_default_context()
+                if self.sslmode in ("prefer", "require", "allow"):   # like libpq: encrypted, certificate not checked
+                    ctx.check_hostname, ctx.verify_mode = False, ssl.CERT_NONE
+                elif self.sslmode == "verify-ca":
+                    ctx.check_hostname = False
+                sock = ctx.wrap_socket(sock, server_hostname=self.host)
+            elif self.sslmode in ("require", "verify-ca", "verify-full"):
+                sock.close()
+                raise PgError(f"the server doesn't offer TLS (sslmode={self.sslmode})")
+        self.sock, self.f = sock, sock.makefile("rb")
+        # Read-only and short timeouts for everything this connection does, whatever the user's grants
+        params = {"user": self.user, "database": self.db, "application_name": "kubepulse",
+                  "options": "-c default_transaction_read_only=on -c statement_timeout=5000 -c lock_timeout=1000"}
+        body = struct.pack("!i", 196608) + b"".join(k.encode() + b"\0" + v.encode() + b"\0" for k, v in params.items()) + b"\0"
+        self.sock.sendall(struct.pack("!i", len(body) + 4) + body)
+        while True:
+            kind, data = self._read()
+            if kind == b"E":
+                raise PgError(self._error(data))
+            if kind == b"Z":
+                return
+            if kind != b"R":
+                continue
+            code = struct.unpack("!i", data[:4])[0]
+            if code == 3:
+                self._send(b"p", self.password.encode() + b"\0")
+            elif code == 5:
+                inner = hashlib.md5((self.password + self.user).encode()).hexdigest().encode()
+                self._send(b"p", b"md5" + hashlib.md5(inner + data[4:8]).hexdigest().encode() + b"\0")
+            elif code == 10:
+                self._scram(data[4:])
+            elif code != 0:
+                raise PgError(f"unsupported sign-in method ({code})")
+
+    def _scram(self, mechanisms):
+        if b"SCRAM-SHA-256" not in mechanisms.split(b"\0"):
+            raise PgError("the server wants a sign-in method KubePulse doesn't support")
+        nonce = base64.b64encode(secrets.token_bytes(18)).decode()
+        first_bare = f"n=,r={nonce}"
+        first = ("n,," + first_bare).encode()
+        self._send(b"p", b"SCRAM-SHA-256\0" + struct.pack("!i", len(first)) + first)
+        kind, data = self._read()
+        if kind == b"E":
+            raise PgError(self._error(data))
+        server_first = data[4:].decode()
+        attrs = dict(kv.split("=", 1) for kv in server_first.split(","))
+        if not attrs["r"].startswith(nonce):
+            raise PgError("the server's sign-in reply didn't match")
+        salted = hashlib.pbkdf2_hmac("sha256", self.password.encode(), base64.b64decode(attrs["s"]), int(attrs["i"]))
+        client_key = hmac.new(salted, b"Client Key", hashlib.sha256).digest()
+        final = f"c=biws,r={attrs['r']}"
+        auth = f"{first_bare},{server_first},{final}".encode()
+        sig = hmac.new(hashlib.sha256(client_key).digest(), auth, hashlib.sha256).digest()
+        proof = base64.b64encode(bytes(a ^ b for a, b in zip(client_key, sig))).decode()
+        self._send(b"p", f"{final},p={proof}".encode())
+        kind, data = self._read()
+        if kind == b"E":
+            raise PgError(self._error(data))
+        server_sig = base64.b64encode(hmac.new(hmac.new(salted, b"Server Key", hashlib.sha256).digest(), auth, hashlib.sha256).digest())
+        if b"v=" + server_sig not in data:
+            raise PgError("the server's sign-in signature didn't match")
+
+    def query(self, sql):
+        """Rows as dicts of strings (or None). Raises PgError for SQL errors, OSError when the connection fails."""
+        with self.lock:
+            try:
+                if not self.sock:
+                    self._connect()
+                self._send(b"Q", sql.encode() + b"\0")
+                cols, rows, err = [], [], None
+                while True:
+                    kind, data = self._read()
+                    if kind == b"T":
+                        cols, pos = [], 2
+                        for _ in range(struct.unpack("!h", data[:2])[0]):
+                            end = data.index(b"\0", pos)
+                            cols.append(data[pos:end].decode())
+                            pos = end + 19   # name, then table oid, column, type oid, size, modifier, format
+                    elif kind == b"D":
+                        vals, pos = [], 2
+                        for _ in range(struct.unpack("!h", data[:2])[0]):
+                            n = struct.unpack("!i", data[pos:pos + 4])[0]
+                            pos += 4
+                            vals.append(None if n < 0 else data[pos:pos + n].decode(errors="replace"))
+                            pos += max(n, 0)
+                        rows.append(dict(zip(cols, vals)))
+                    elif kind == b"E":
+                        err = self._error(data)
+                    elif kind == b"Z":
+                        break
+                if err:
+                    raise PgError(err)
+                return rows
+            except PgError:
+                raise
+            except Exception:
+                self.close()
+                raise
+
+
+def _num(v, cast=float):
+    try:
+        return cast(v) if v is not None else None
+    except ValueError:
+        return None
+
+
+_SQL_STR = re.compile(r"[EeBbXxNn]?'(?:[^']|'')*'")
+_SQL_NUM = re.compile(r"(?<![\w$.\"])-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?\b")
+_SQL_LIST = re.compile(r"\(\s*\?(?:\s*,\s*\?)+\s*\)")
+
+
+def normalize_sql(q, limit=1000):
+    """Query text without the values in it (they can be patient names, emails...): 'abc' and 42 become ?."""
+    q = _SQL_LIST.sub("(?, …)", _SQL_NUM.sub("?", _SQL_STR.sub("?", q or "")))
+    q = re.sub(r"\s+", " ", q).strip()
+    return redact(q[:limit] + ("…" if len(q) > limit else ""))
+
+
+_METRIC_LINE = re.compile(r"^([a-zA-Z_:][\w:]*)(?:\{(.*)\})?\s+(\S+)")
+_LABEL = re.compile(r'(\w+)="((?:[^"\\]|\\.)*)"')
+
+
+def parse_metrics(text):
+    """Prometheus text format -> {metric: [(labels, value)]}, only the pg_ metrics."""
+    out = {}
+    for line in text.splitlines():
+        if not line.startswith("pg_"):
+            continue
+        m = _METRIC_LINE.match(line)
+        if not m:
+            continue
+        try:
+            value = float(m.group(3))
+        except ValueError:
+            continue
+        out.setdefault(m.group(1), []).append((dict(_LABEL.findall(m.group(2) or "")), value))
+    return out
+
+
+def find_pg_exporters():
+    """(namespace, service, port) of postgres_exporter Services: port 9187, or a metrics port on a postgres Service."""
+    paths = [f"/api/v1/namespaces/{ns}/services" for ns in NAMESPACES] or ["/api/v1/services"]
+    found = []
+    for path in paths:
+        for svc in (k8s_get_optional(path) or {}).get("items", []):
+            name = svc["metadata"]["name"]
+            for p in svc["spec"].get("ports") or []:
+                if p.get("port") == 9187 or ("postgres" in name and "metrics" in (p.get("name") or "") + name):
+                    found.append((svc["metadata"]["namespace"], name, p["port"]))
+                    break
+    return found
+
+
+def scrape_exporter(ns, name, port):
+    if env("K8S_API"):   # running on a laptop: go through the API server's service proxy
+        return k8s_get_text(f"/api/v1/namespaces/{ns}/services/{name}:{port}/proxy/metrics")
+    with urllib.request.urlopen(f"http://{name}.{ns}.svc:{port}/metrics", timeout=5) as resp:
+        return resp.read().decode(errors="replace")
+
+
+def _db_key_from_host(host):
+    """postgresql-primary.prod.svc.cluster.local -> ("prod", "postgresql-primary")."""
+    parts = (host or "").split(".")
+    if len(parts) >= 2 and not parts[-1].isdigit() and parts[1] != "svc":
+        return parts[1], parts[0]
+    return "", host
+
+
+SQL_SERVER = """select current_setting('server_version') as version, current_setting('max_connections') as max_conn,
+  extract(epoch from now() - pg_postmaster_start_time())::bigint as uptime, pg_is_in_recovery() as replica,
+  case when not pg_is_in_recovery() or pg_last_wal_receive_lsn() = pg_last_wal_replay_lsn() then 0
+       else extract(epoch from now() - pg_last_xact_replay_timestamp()) end as lag"""
+SQL_DATABASES = """select datname, numbackends, xact_commit, xact_rollback, blks_hit, blks_read, deadlocks, temp_bytes,
+  pg_database_size(datid) as size from pg_stat_database where datname is not null and datname not like 'template%'"""
+SQL_ACTIVITY = """select pid, datname, usename, application_name as app, host(client_addr) as addr, state,
+  extract(epoch from now() - backend_start)::bigint as conn_age, extract(epoch from now() - xact_start) as xact_age,
+  extract(epoch from now() - query_start) as query_age, extract(epoch from now() - state_change) as state_age,
+  wait_event_type, wait_event, pg_blocking_pids(pid) as blocked_by, left(query, 1500) as query
+  from pg_stat_activity where backend_type = 'client backend' and pid <> pg_backend_pid()"""
+SQL_STATEMENTS = """select s.queryid::text as id, d.datname, r.rolname as usename, s.calls, s.{total} as total, s.{mean} as mean,
+  s.{max} as max, s.rows, s.shared_blks_hit as hit, s.shared_blks_read as rd, s.temp_blks_written as tmp, left(s.query, 1500) as query
+  from pg_stat_statements s left join pg_database d on d.oid = s.dbid left join pg_roles r on r.oid = s.userid
+  where s.query not ilike '%pg_stat_%' order by s.{total} desc limit 300"""
+
+
+class Databases:
+    """PostgreSQL servers: health from postgres_exporter, and (with PG_URLS) connections per app,
+    running and blocked queries and the slowest statements. Runs in its own thread, so a slow or
+    unreachable database never delays the cluster view."""
+    FIND_EVERY = 300
+    STMT_EVERY = 60
+    HISTORY = max(10, 3 * 3600 // DB_POLL_SECONDS)
+
+    def __init__(self):
+        self.clients = {}       # key -> Postgres
+        self.exporters = []     # [(key, ns, name, port | url)]
+        self.found_at = 0.0
+        self.prev = {}          # key -> (time, counters), for rates
+        self.hist = {}          # key -> deque of [t, connections, active, tps, cache hit %]
+        self.stmt_samples = {}  # key -> deque of (time, {queryid: (calls, total ms)}), the last hour
+        self.stmt_at = {}       # key -> when statements were last read
+        self.stmts = {}         # key -> (rows, error)
+        self.lock = threading.Lock()
+        self.data = {"enabled": False, "instances": []}
+        for entry in PG_URLS:
+            named = re.match(r"^([\w./-]+)=(postgres(?:ql)?://.*)$", entry)   # optional "namespace/name=" in front
+            c = Postgres(named.group(2) if named else entry)
+            key = tuple(named.group(1).rpartition("/")[::2]) if named else _db_key_from_host(c.host)
+            self.clients[key] = c
+
+    def _find(self):
+        if time.time() - self.found_at < self.FIND_EVERY:
+            return
+        self.found_at = time.time()
+        found = []
+        for url in PG_EXPORTERS:
+            host = urlparse(url).hostname or url
+            ns, name = _db_key_from_host(host)
+            found.append(((ns, re.sub(r"-metrics$", "", name)), url))
+        if not PG_EXPORTERS:
+            try:
+                found = [((ns, re.sub(r"-metrics$", "", name)), (ns, name, port)) for ns, name, port in find_pg_exporters()]
+            except Exception as e:
+                print(f"finding postgres exporters failed: {api_error(e)[1]}", flush=True)
+        if [k for k, _ in found] != [k for k, _ in self.exporters]:
+            print(f"postgres exporters: {', '.join(f'{k[0]}/{k[1]}' for k, _ in found) or 'none found'}", flush=True)
+        self.exporters = found
+
+    def _scrape(self, target):
+        if isinstance(target, str):
+            with urllib.request.urlopen(target if target.endswith("/metrics") else target + "/metrics", timeout=5) as resp:
+                return parse_metrics(resp.read().decode(errors="replace"))
+        return parse_metrics(scrape_exporter(*target))
+
+    @staticmethod
+    def _from_exporter(m):
+        """The same shape _from_sql makes, from postgres_exporter metrics."""
+        def total(name, **match):
+            rows = [v for labels, v in m.get(name, []) if all(labels.get(k) == x for k, x in match.items())]
+            return sum(rows) if rows else None
+        states = {}
+        for labels, v in m.get("pg_stat_activity_count", []):
+            if labels.get("state"):
+                states[labels["state"]] = states.get(labels["state"], 0) + int(v)
+        dbs = {}
+        for labels, v in m.get("pg_database_size_bytes", []):
+            if labels.get("datname") and not labels["datname"].startswith("template"):
+                dbs.setdefault(labels["datname"], {})["size"] = v
+        for labels, v in m.get("pg_stat_database_numbackends", []):
+            if labels.get("datname") in dbs:
+                dbs[labels["datname"]]["connections"] = int(v)
+        version = next((labels.get("short_version") or labels.get("version") for labels, _ in m.get("pg_static", [])), None)
+        start = total("pg_postmaster_start_time_seconds")
+        longest_tx = max((v for _, v in m.get("pg_stat_activity_max_tx_duration", [])), default=None)
+        return {
+            "up": total("pg_up") == 1 if "pg_up" in m else True,
+            "version": version, "maxConnections": _num(total("pg_settings_max_connections"), int),
+            "uptime": int(time.time() - start) if start else None,
+            "replica": bool(total("pg_replication_is_replica")),
+            "lag": total("pg_replication_lag_seconds") if total("pg_replication_is_replica") else None,
+            "states": states, "databases": dbs, "longestTx": longest_tx,
+            "counters": {k: total(f"pg_stat_database_{k}") for k in ("xact_commit", "xact_rollback", "blks_hit", "blks_read", "deadlocks", "temp_bytes")},
+            "locks": {labels.get("mode"): int(v) for labels, v in m.get("pg_locks_count", []) if v},
+        }
+
+    @staticmethod
+    def _from_sql(client, pods_by_ip):
+        server = client.query(SQL_SERVER)[0]
+        dbrows = client.query(SQL_DATABASES)
+        acts = client.query(SQL_ACTIVITY)
+        counters = {k: sum(_num(r[k]) or 0 for r in dbrows) for k in ("xact_commit", "xact_rollback", "blks_hit", "blks_read", "deadlocks", "temp_bytes")}
+        states, sessions = {}, []
+        for a in acts:
+            state = a["state"] or "unknown"
+            states[state] = states.get(state, 0) + 1
+            pod = pods_by_ip.get(a["addr"])
+            blocked = [int(x) for x in (a["blocked_by"] or "{}").strip("{}").split(",") if x]
+            sessions.append({
+                "pid": int(a["pid"]), "db": a["datname"], "user": a["usename"], "app": a["app"] or "", "addr": a["addr"],
+                "pod": [pod["namespace"], pod["name"]] if pod else None,
+                "workload": owner_short(pod["owner"]) if pod and pod.get("owner") else (pod["name"] if pod else None),
+                "state": state, "connAge": _num(a["conn_age"], int), "xactAge": _num(a["xact_age"]),
+                "duration": _num(a["query_age"] if state == "active" else a["state_age"]),
+                "wait": ":".join(x for x in (a["wait_event_type"], a["wait_event"]) if x) or None,
+                "blockedBy": blocked, "query": normalize_sql(a["query"]),
+            })
+        return {
+            "up": True, "version": server["version"], "maxConnections": _num(server["max_conn"], int),
+            "uptime": _num(server["uptime"], int), "replica": server["replica"] == "t", "lag": _num(server["lag"]),
+            "states": states, "longestTx": max((s["xactAge"] or 0 for s in sessions), default=None),
+            "databases": {r["datname"]: {"size": _num(r["size"]), "connections": _num(r["numbackends"], int)} for r in dbrows},
+            "counters": counters, "sessions": sessions,
+        }
+
+    def _statements(self, key, client):
+        """The heaviest statements since the stats were reset, and in the last hour (from our own samples)."""
+        now = time.time()
+        if now - self.stmt_at.get(key, 0) < self.STMT_EVERY:
+            return self.stmts.get(key, (None, None))
+        self.stmt_at[key] = now
+        try:
+            try:
+                rows = client.query(SQL_STATEMENTS.format(total="total_exec_time", mean="mean_exec_time", max="max_exec_time"))
+            except PgError as e:
+                if "total_exec_time" not in str(e):
+                    raise
+                rows = client.query(SQL_STATEMENTS.format(total="total_time", mean="mean_time", max="max_time"))   # PostgreSQL 12 and older
+        except PgError as e:
+            msg = str(e)
+            if "pg_stat_statements" in msg:
+                msg = ("pg_stat_statements isn't enabled. Add it to shared_preload_libraries (Bitnami chart: "
+                       "primary.extendedConfiguration / postgresql.sharedPreloadLibraries), restart, then run "
+                       "CREATE EXTENSION pg_stat_statements; in the database KubePulse connects to.")
+            self.stmts[key] = (None, msg)
+            return self.stmts[key]
+        rows = [r for r in rows if r["usename"] != client.user]
+        cur = {r["id"]: (_num(r["calls"], int) or 0, _num(r["total"]) or 0.0) for r in rows}
+        samples = self.stmt_samples.setdefault(key, deque())
+        if samples and sum(c for c, _ in cur.values()) < sum(c for c, _ in samples[-1][1].values()) * 0.5:
+            samples.clear()   # the statistics were reset
+        samples.append((now, cur))
+        while samples and now - samples[0][0] > 3600 + self.STMT_EVERY:
+            samples.popleft()
+        base_t, base = samples[0]
+        grand = sum(t for _, t in cur.values()) or 1
+        out = []
+        for r in rows:
+            calls, tot = cur[r["id"]]
+            c0, t0 = base.get(r["id"], (0, 0.0)) if len(samples) > 1 else (calls, tot)
+            hit, rd = _num(r["hit"]) or 0, _num(r["rd"]) or 0
+            out.append({
+                "id": r["id"], "db": r["datname"], "user": r["usename"], "calls": calls, "total": tot, "mean": _num(r["mean"]),
+                "max": _num(r["max"]), "rows": _num(r["rows"], int), "share": round(tot / grand * 100, 1),
+                "cacheHit": round(hit / (hit + rd) * 100, 1) if hit + rd else None, "tempBlocks": _num(r["tmp"], int),
+                "recentCalls": max(0, calls - c0), "recentTotal": max(0.0, tot - t0),
+                "query": normalize_sql(r["query"]),
+            })
+        window = int(now - base_t) if len(samples) > 1 else 0
+        pick = set()
+        for sort in (lambda q: q["total"], lambda q: q["recentTotal"], lambda q: q["mean"] or 0):
+            pick.update(q["id"] for q in sorted(out, key=sort, reverse=True)[:15])
+        self.stmts[key] = ({"window": window, "rows": [q for q in out if q["id"] in pick]}, None)
+        return self.stmts[key]
+
+    def _rates(self, key, inst):
+        now, c = time.time(), inst["counters"]
+        prev = self.prev.get(key)
+        self.prev[key] = (now, c)
+        tps = hit = None
+        if prev and all(c.get(k) is not None and prev[1].get(k) is not None for k in ("xact_commit", "xact_rollback")):
+            dt = now - prev[0]
+            d = {k: (c[k] or 0) - (prev[1][k] or 0) for k in c if c.get(k) is not None and prev[1].get(k) is not None}
+            if dt > 0 and all(v >= 0 for v in d.values()):
+                tps = round((d["xact_commit"] + d["xact_rollback"]) / dt, 1)
+                if d.get("blks_hit", 0) + d.get("blks_read", 0) > 0:
+                    hit = round(d["blks_hit"] / (d["blks_hit"] + d["blks_read"]) * 100, 2)
+                inst["rollbacksPerMin"] = round(d["xact_rollback"] / dt * 60, 1)
+                inst["newDeadlocks"] = int(d.get("deadlocks", 0))
+        if hit is None and c.get("blks_hit") is not None and (c["blks_hit"] + (c.get("blks_read") or 0)):
+            hit = round(c["blks_hit"] / (c["blks_hit"] + (c.get("blks_read") or 0)) * 100, 2)
+        inst["tps"], inst["cacheHit"] = tps, hit
+        conns = sum(inst["states"].values()) if inst["states"] else None
+        inst["connections"] = conns
+        h = self.hist.setdefault(key, deque(maxlen=self.HISTORY))
+        h.append([int(now), conns, inst["states"].get("active"), tps, hit])
+        inst["hist"] = dict(zip(("t", "connections", "active", "tps", "cacheHit"), map(list, zip(*h))))
+
+    @staticmethod
+    def _apps(sessions):
+        """Connections grouped by the app (workload) that holds them: the database side of each app's pool."""
+        groups = {}
+        for s in sessions:
+            label = session_label(s)
+            g = groups.setdefault((label, s["db"], s["user"]), {
+                "name": label, "db": s["db"], "user": s["user"], "app": s["app"], "pods": set(), "total": 0, "active": 0, "idle": 0,
+                "idleInTx": 0, "waiting": 0, "longestIdleInTx": 0, "longestActive": 0, "pod": s["pod"], "external": s["pod"] is None})
+            g["total"] += 1
+            if s["pod"]:
+                g["pods"].add(s["pod"][1])
+            if s["state"] == "active":
+                g["active"] += 1
+                g["longestActive"] = max(g["longestActive"], s["duration"] or 0)
+            elif s["state"] == "idle":
+                g["idle"] += 1
+            elif s["state"].startswith("idle in transaction"):
+                g["idleInTx"] += 1
+                g["longestIdleInTx"] = max(g["longestIdleInTx"], s["duration"] or 0)
+            if s["blockedBy"]:
+                g["waiting"] += 1
+        return sorted(({**g, "pods": len(g["pods"])} for g in groups.values()), key=lambda g: -g["total"])
+
+    def collect(self):
+        if not DB_MONITORING:
+            with self.lock:
+                self.data = {"enabled": False, "off": True, "instances": [], "checkedAt": now_iso()}
+            return
+        self._find()
+        snap = STORE.snap or {}
+        pods_by_ip = {p["ip"]: p for p in snap.get("pods", []) if p.get("ip")}
+        keys = list(dict.fromkeys([k for k, _ in self.exporters] + list(self.clients)))
+        targets = dict(self.exporters)
+        instances = []
+        for key in keys:
+            inst, errors = None, []
+            client = self.clients.get(key)
+            if key in targets:
+                try:
+                    inst = self._from_exporter(self._scrape(targets[key]))
+                    inst["source"] = "exporter"
+                except Exception as e:
+                    errors.append(f"exporter: {api_error(e)[1]}")
+            if client:
+                try:
+                    sql = self._from_sql(client, pods_by_ip)
+                    if inst:   # SQL is fresher and per session; keep the exporter's lock counts
+                        sql["locks"] = inst.get("locks")
+                    inst = dict(sql, source="sql" if not inst else "exporter+sql")
+                    stmts, err = self._statements(key, client)
+                    inst["statements"], inst["statementsError"] = stmts, err
+                except PgError as e:
+                    errors.append(f"sign-in or query failed: {e}")
+                except Exception as e:
+                    errors.append(f"can't connect to {client.host}:{client.port}: {api_error(e)[1]}")
+                    if not inst:
+                        inst = {"up": False, "states": {}, "counters": {}, "databases": {}}
+            if not inst:
+                inst = {"up": None, "states": {}, "counters": {}, "databases": {}}
+            inst.update(namespace=key[0], name=key[1], errors=errors, sqlConfigured=bool(client), hasExporter=key in targets)
+            self._rates(key, inst)
+            if inst.get("sessions") is not None:
+                sessions = inst.pop("sessions")
+                inst["apps"] = self._apps(sessions)
+                by_pid = {s["pid"]: s for s in sessions}
+                running = [s for s in sessions if s["state"] != "idle"]
+                for s in running:
+                    s["label"] = session_label(s)
+                    s["blockers"] = [{"pid": p, "workload": session_label(by_pid[p]) if p in by_pid else "?"} for p in s.pop("blockedBy")]
+                inst["running"] = sorted(running, key=lambda s: -(s["duration"] or 0))[:25]
+                inst["blocked"] = sum(1 for s in running if s["blockers"])
+            mc, conns = inst.get("maxConnections"), inst.get("connections")
+            inst["connPercent"] = round(conns / mc * 100, 1) if mc and conns is not None else None
+            instances.append(inst)
+        with self.lock:
+            self.data = {"enabled": bool(instances), "instances": instances, "checkedAt": now_iso(),
+                         "sqlConfigured": bool(PG_URLS), "pollSeconds": DB_POLL_SECONDS,
+                         "thresholds": {"connPercent": DB_CONN_WARN_PERCENT, "lagSeconds": DB_LAG_WARN_SECONDS,
+                                        "longQueryMinutes": DB_LONG_QUERY_MINUTES}}
+
+    def view(self):
+        with self.lock:
+            return self.data
+
+    def loop(self):
+        for _ in range(60):   # wait for the first cluster snapshot, so connections can be matched to pods
+            if STORE.snap:
+                break
+            time.sleep(1)
+        while True:
+            started = time.time()
+            try:
+                self.collect()
+                with STORE.lock:   # show it now rather than at the next cluster poll
+                    snap = STORE.snap
+                if snap:
+                    STORE.publish(dict(snap, databases=self.view()))
+            except Exception as e:
+                print(f"database check failed: {api_error(e)[1]}", flush=True)
+            time.sleep(max(1.0, DB_POLL_SECONDS - (time.time() - started)))
+
+
+def owner_short(owner):
+    """'Deployment/core' -> 'core'."""
+    return (owner or "").split("/", 1)[-1]
+
+
+GENERIC_APP_NAMES = {"", "PostgreSQL JDBC Driver", "pgjdbc", "node-postgres"}   # driver defaults, not app names
+
+
+def session_label(s):
+    """Who holds a connection: the workload of the pod it comes from, else its application_name, else its address."""
+    return s.get("workload") or (s.get("app") if s.get("app") not in GENERIC_APP_NAMES else None) or s.get("addr") or "local"
+
+
+DATABASES = Databases()
+
+
+def db_name(d):
+    return (d["namespace"] + "/" if d.get("namespace") else "") + d["name"]
+
+
+def db_alerts(dbs):
+    """Alert dicts for the databases, keyed ("db", namespace, name, what)."""
+    cur = {}
+    long_s = DB_LONG_QUERY_MINUTES * 60
+    for d in (dbs or {}).get("instances", []):
+        ns, name = d["namespace"], d["name"]
+        title = f"PostgreSQL {ns + '/' if ns else ''}{name}"
+        base = {"kind": "db", "ns": ns, "name": name, "title": title, "fields": {}}
+        if d.get("up") is False:
+            cur[("db", ns, name, "down")] = dict(base, level="bad", reason="Database is down",
+                                                 detail="; ".join(d.get("errors") or []) or "The exporter reports pg_up = 0.")
+            continue
+        if d.get("connPercent") is not None and d["connPercent"] >= DB_CONN_WARN_PERCENT:
+            top = ", ".join(f"{a['name']} {a['total']}" for a in (d.get("apps") or [])[:3])
+            cur[("db", ns, name, "connections")] = dict(
+                base, level="bad" if d["connPercent"] >= 95 else "warn",
+                reason=f"Connections {d['connPercent']:.0f}% full ({d['connections']} of {d['maxConnections']})",
+                detail=("Most held by: " + top) if top else "New connections will be refused when it's full.",
+                fields={"Idle in transaction": str(d["states"].get("idle in transaction", 0))})
+        if d.get("replica") and d.get("lag") is not None and d["lag"] >= DB_LAG_WARN_SECONDS:
+            cur[("db", ns, name, "lag")] = dict(base, level="bad" if d["lag"] >= DB_LAG_WARN_SECONDS * 5 else "warn",
+                                                reason=f"Replica is {fmt_age(int(d['lag']))} behind",
+                                                detail="Reads from this replica return old data.")
+        running = [s for s in d.get("running") or [] if s["app"] not in DB_IGNORE_APPS]
+        slow = [s for s in running if s["state"] == "active" and (s["duration"] or 0) >= long_s]
+        if slow:
+            s = slow[0]
+            cur[("db", ns, name, "long")] = dict(
+                base, level="warn", reason=f"{len(slow)} quer{'ies' if len(slow) != 1 else 'y'} running over {DB_LONG_QUERY_MINUTES:g} min",
+                detail=f"Longest {fmt_age(int(s['duration']))} from {session_label(s)}: {s['query'][:200]}",
+                fields={"Database": s["db"] or "-"})
+        idle_tx = [s for s in running if s["state"].startswith("idle in transaction") and (s["duration"] or 0) >= long_s]
+        if idle_tx:
+            s = idle_tx[0]
+            cur[("db", ns, name, "idletx")] = dict(
+                base, level="warn", reason=f"{len(idle_tx)} transaction{'s' if len(idle_tx) != 1 else ''} left open (idle in transaction)",
+                detail=f"{session_label(s)} has held one open for {fmt_age(int(s['duration']))}. "
+                       "It holds locks and blocks vacuum; usually a missing commit or a leaked connection.")
+        waiting = [s for s in running if s.get("blockers") and (s["duration"] or 0) >= 60]
+        if waiting:
+            s = waiting[0]
+            cur[("db", ns, name, "locks")] = dict(
+                base, level="warn", reason=f"{len(waiting)} session{'s' if len(waiting) != 1 else ''} waiting on locks",
+                detail=f"{session_label(s)} has waited {fmt_age(int(s['duration']))}, blocked by "
+                       + ", ".join(f"{b['workload']} (pid {b['pid']})" for b in s["blockers"][:3]))
+        if d.get("running") is None and d.get("longestTx") and d["longestTx"] >= long_s:
+            cur[("db", ns, name, "longtx")] = dict(base, level="warn", reason=f"A transaction has been open for {fmt_age(int(d['longestTx']))}",
+                                                   detail="Set PG_URLS to see which app and query.")
+    return cur
+
+
+def tool_get_database_status(name=""):
+    """For the AI: each PostgreSQL server's connections per app, running / blocked queries and slowest statements."""
+    out = []
+    for d in DATABASES.view().get("instances", []):
+        if name and name not in (d["name"], f"{d['namespace']}/{d['name']}"):
+            continue
+        st = d.get("statements") or {}
+        out.append({
+            "server": f"{d['namespace']}/{d['name']}" if d["namespace"] else d["name"], "up": d.get("up"), "replica": d.get("replica"), "lagSeconds": d.get("lag"),
+            "connections": d.get("connections"), "maxConnections": d.get("maxConnections"), "byState": d.get("states"),
+            "connectionsPerApp": [{k: a[k] for k in ("name", "db", "total", "active", "idle", "idleInTx", "waiting", "longestIdleInTx")}
+                                  for a in (d.get("apps") or [])[:15]],
+            "runningOrIdleInTransaction": [{k: s.get(k) for k in ("workload", "app", "db", "state", "duration", "wait", "blockers", "query")}
+                                           for s in (d.get("running") or [])[:10]],
+            "slowestStatements": [{k: q[k] for k in ("db", "calls", "mean", "max", "recentCalls", "recentTotal", "query")}
+                                  for q in sorted(st.get("rows") or [], key=lambda q: -q["recentTotal"])[:8]],
+            "tps": d.get("tps"), "cacheHitPercent": d.get("cacheHit"), "deadlocksSinceLastCheck": d.get("newDeadlocks"),
+            "problems": d.get("errors") or None,
+        })
+    return out or {"note": "KubePulse doesn't monitor any PostgreSQL server (no exporter found and PG_URLS not set)."}
 
 
 # ---------- Rollouts: what changed, when, and whether it went well ----------
@@ -1019,6 +1658,9 @@ def build_digest(snap, days):
     vols = [v for v in snap.get("pvcs") or [] if v.get("percent") and v["percent"] >= 80]
     if vols:
         lines.append("**Volumes:** " + ", ".join(f"💾 {v['namespace']}/{v['name']} {v['percent']:.0f}%" for v in vols[:3]))
+    db_lines = digest_databases(days)
+    if db_lines:
+        lines.append(db_lines)
     top24 = ins.get("top24") or {}
     if top24.get("cpu") and top24.get("mem"):
         c, m = top24["cpu"][0], top24["mem"][0]
@@ -1030,6 +1672,42 @@ def build_digest(snap, days):
     if dashboard_url():
         lines.append(f"[Open KubePulse →]({dashboard_url()}/#insights)")
     return title + "\n" + "\n".join("- " + l if not l.startswith("[") else l for l in lines)
+
+
+def digest_databases(days):
+    """The 🐘 Databases part of the digest: peak connections, replica lag and the heaviest statements. None if no database is monitored."""
+    dbs = DATABASES.view()
+    if not dbs.get("enabled"):
+        return None
+    since = _day(time.time() - days * 86400)
+    rows = []
+    for d in dbs["instances"]:
+        key = db_name(d)
+        peak = max((v[key] for day, v in INSIGHTS.db_peak.items() if day >= since and key in v), default=None)
+        if d.get("up") is False:
+            state = "🔴 down"
+        elif d.get("up") is None:
+            state = "status unknown"
+        else:
+            state = ("replica" + (f", {'<1s' if d['lag'] < 1 else fmt_age(int(d['lag']))} behind" if d.get("lag") is not None else "")
+                     + (" ⚠️" if d.get("lag") is not None and d["lag"] >= DB_LAG_WARN_SECONDS else "")) if d.get("replica") else "primary"
+        conn = f"connections peaked at {peak:.0f}%" if peak is not None else "no connection data yet"
+        if peak is not None and peak >= DB_CONN_WARN_PERCENT:
+            conn += " ⚠️"
+        if d.get("connections") is not None and d.get("maxConnections"):
+            conn += f" (now {d['connections']} of {d['maxConnections']})"
+        rows.append(f"  - {key}: {state} · {conn}")
+    stmts = [(q, db_name(d), (d.get("statements") or {}).get("window") or 0)
+             for d in dbs["instances"] for q in (d.get("statements") or {}).get("rows") or []]
+    top = sorted((s for s in stmts if s[0]["recentTotal"] > 0), key=lambda s: -s[0]["recentTotal"])[:3]
+    if top:
+        window = max(s[2] for s in top)
+        rows.append(f"  - Heaviest queries{(', last ' + fmt_age(window)) if window else ''}:")
+        for q, key, _ in top:
+            text = " ".join(q["query"].split()).replace("`", "'")
+            text = text[:119] + "…" if len(text) > 120 else text
+            rows.append(f"    1. `{text}` — {q['recentTotal'] / 1000:.1f}s in {q['recentCalls']} calls ({key})")
+    return "**🐘 Databases:**\n" + "\n".join(rows)
 
 
 class Digest:
@@ -1460,6 +2138,7 @@ TOOL_FUNCS = {
     "get_node": tool_get_node,
     "get_services": tool_get_services,
     "check_references": tool_check_references,
+    "get_database_status": tool_get_database_status,
 }
 
 
@@ -1487,6 +2166,8 @@ TOOLS = [
         {"namespace": _S}, ["namespace"]),
     _fn("check_references", "Whether the ConfigMaps (and keys) and PersistentVolumeClaims a pod uses exist and are bound.",
         {"namespace": _S, "name": _S}, ["namespace", "name"]),
+    _fn("get_database_status", "PostgreSQL servers: connections per app (the database side of each app's pool), running, idle-in-transaction and lock-blocked queries, and the slowest statements. Use for database timeouts, 'too many connections', connection pool exhaustion or slow requests.",
+        {"name": {"type": "string", "description": "Optional server, e.g. postgresql-primary"}}, []),
 ]
 
 
@@ -1501,6 +2182,7 @@ def step_label(name, a):
         "get_node": f"Checked node {target}",
         "get_services": f"Checked services and endpoints in {a.get('namespace', '')}",
         "check_references": f"Checked ConfigMaps and volumes used by {target}",
+        "get_database_status": "Checked the PostgreSQL databases",
     }.get(name, name)
 
 
@@ -1509,9 +2191,11 @@ root cause yourself with the read-only tools, the way a senior SRE would:
 - Start from the evidence you're given, then dig: read logs (previous=true for crashed containers),
   look at the owning workload and its recent rollouts, compare sibling pods, check the node, check
   services/endpoints the app talks to, and check that referenced ConfigMaps and volumes exist.
+  For database errors (timeouts, connection pool exhausted, too many connections, lock waits) check
+  get_database_status: connections per app, long or blocked queries and slow statements.
 - Follow the evidence. Don't call tools you don't need. Stop as soon as you're confident.
 - Never ask the user to run commands or check things: you are the one investigating. If something
-  can't be checked with your tools (Secret contents, external databases, cloud resources), say so.
+  can't be checked with your tools (Secret contents, databases KubePulse doesn't monitor, cloud resources), say so.
 
 Final report in Markdown for the developer on call:
 ## Verdict
@@ -1686,6 +2370,8 @@ def alert_emoji(a):
         return "🔐"
     if a["kind"] == "pvc":
         return "💾"
+    if a["kind"] == "db":
+        return "🐘"
     for words, emoji in ((("oom",), "🧠"), (("crashloop",), "🔁"), (("imagepull", "errimage", "invalidimage"), "📦"),
                          (("pending", "containercreating"), "⏳"), (("not ready",), "🚦"), (("evicted",), "🧹"),
                          (("job run",), "⚙️"), (("config",), "🧩"), (("error", "failed"), "💥")):
@@ -1754,6 +2440,7 @@ class Alerter:
                     "kind": "pvc", "title": f"Volume {v['namespace']}/{v['name']}", "level": "bad" if v["percent"] >= 95 else "warn",
                     "reason": f"{v['percent']:.0f}% full", "detail": f"Used by {v['pod']}" if v["pod"] else "",
                     "fields": {"Size": v["size"] or "-"}}
+        cur.update(db_alerts(snap.get("databases")))
         return cur, oom
 
     def check(self, snap):
@@ -1895,8 +2582,9 @@ class Alerter:
         if dashboard_url() and a["kind"] == "pod" and not a.get("example"):
             att["title_link"] = f"{dashboard_url()}/#pod/{a['ns']}/{a['name']}"
             att["text"] += f"\n[Open in KubePulse →]({dashboard_url()}/#pod/{a['ns']}/{a['name']})"
-        elif dashboard_url() and a["kind"] in ("cert", "pvc", "node"):
-            att["text"] += f"\n[Open in KubePulse →]({dashboard_url()}/#{'nodes' if a['kind'] == 'node' else 'insights'})"
+        elif dashboard_url() and a["kind"] in ("cert", "pvc", "node", "db"):
+            page = {"node": "nodes", "db": "databases"}.get(a["kind"], "insights")
+            att["text"] += f"\n[Open in KubePulse →]({dashboard_url()}/#{page})"
         return att
 
     def send(self, text, alerts=()):
@@ -1936,6 +2624,21 @@ WALL_POD_FIELDS = ("namespace", "name", "node", "status", "level", "kind", "atte
                    "restarts", "lastReason", "lastExitAge", "cpu", "mem", "cpuReq", "cpuLimit", "memReq", "memLimit", "owner")
 
 
+WALL_DB_FIELDS = ("namespace", "name", "up", "replica", "lag", "connections", "maxConnections", "connPercent")
+
+
+def wall_databases(dbs):
+    """Database health for the public wallboard: numbers only, never queries, apps, sessions, statements or errors."""
+    if not (dbs or {}).get("enabled"):
+        return None
+    counts = {}
+    for k in db_alerts(dbs):
+        counts[(k[1], k[2])] = counts.get((k[1], k[2]), 0) + 1
+    return {"enabled": True, "thresholds": {k: (dbs.get("thresholds") or {}).get(k) for k in ("connPercent", "lagSeconds")},
+            "instances": [{**{k: d.get(k) for k in WALL_DB_FIELDS}, "problems": counts.get((d["namespace"], d["name"]), 0)}
+                          for d in dbs["instances"]]}
+
+
 def wallboard_view(snap):
     """Only what the wallboard shows: no logs, events, pod specs, certificates or alert settings."""
     return {
@@ -1943,6 +2646,7 @@ def wallboard_view(snap):
         "nodes": snap["nodes"],
         "pods": [{k: p.get(k) for k in WALL_POD_FIELDS} for p in snap["pods"]],
         "insights": {k: (snap.get("insights") or {}).get(k) for k in ("timeline", "top24")},
+        "databases": wall_databases(snap.get("databases")),
         "public": True,
     }
 
@@ -1975,6 +2679,7 @@ def poll_loop():
             record_history(snap)
             INSIGHTS.update(snap)
             new_rollouts = ROLLOUTS.update(snap)
+            snap["databases"] = DATABASES.view()
             ALERTS.check(snap)
             ALERTS.rollouts(new_rollouts, snap)
             try:
@@ -2236,11 +2941,13 @@ class Handler(BaseHTTPRequestHandler):
 if __name__ == "__main__":
     print(f"KubePulse listening on :{PORT} (API: {BASE_URL}, poll every {POLL_SECONDS}s, "
           f"AI {'on' if OPENAI_API_KEY else 'off'}, alerts {'on' if MATTERMOST_WEBHOOK_URL else 'off'}, "
+          f"databases {'off' if not DB_MONITORING else f'{len(PG_URLS)} via SQL + exporters' if PG_URLS else 'via exporters'}, "
           f"login {'on' if AUTH_ENABLED else 'OFF'}, wallboard {'public at /wall' if WALLBOARD_PUBLIC else 'needs login'})", flush=True)
     if GENERATED_PASSWORD:
         print(f"No KUBEPULSE_USERS set. Sign in as  admin / {GENERATED_PASSWORD}  (it changes on every restart; "
               f"set KUBEPULSE_USERS in the kubepulse-secrets Secret to choose your own)", flush=True)
     threading.Thread(target=poll_loop, daemon=True).start()
+    threading.Thread(target=DATABASES.loop, daemon=True).start()
     server = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
     server.daemon_threads = True
     server.serve_forever()
