@@ -94,6 +94,30 @@ pod("uat", "orders-api-9f2c1b8d4-a1", NODE_NAMES[1], "orders-api", last={"reason
 LOGS = """2026-09-24T06:28:01Z INFO  Starting payments-api v2.4.1
 2026-09-24T06:28:02Z INFO  Connecting to postgres://payments@postgres:5432/payments
 2026-09-24T06:28:03Z INFO  Warming settlement cache (batch=50000)
+2026-09-24T06:28:11Z INFO  Loaded settlement batch 1 (50000 rows) in 307 ms
+2026-09-24T06:28:12Z INFO  Loaded settlement batch 2 (50000 rows) in 314 ms
+2026-09-24T06:28:13Z INFO  Loaded settlement batch 3 (50000 rows) in 321 ms
+2026-09-24T06:28:14Z INFO  Loaded settlement batch 4 (50000 rows) in 328 ms
+2026-09-24T06:28:15Z INFO  Loaded settlement batch 5 (50000 rows) in 335 ms
+2026-09-24T06:28:16Z INFO  Loaded settlement batch 6 (50000 rows) in 342 ms
+2026-09-24T06:28:17Z INFO  Loaded settlement batch 7 (50000 rows) in 349 ms
+2026-09-24T06:28:18Z INFO  Loaded settlement batch 8 (50000 rows) in 356 ms
+2026-09-24T06:28:19Z INFO  Loaded settlement batch 9 (50000 rows) in 363 ms
+2026-09-24T06:28:20Z INFO  Loaded settlement batch 10 (50000 rows) in 370 ms
+2026-09-24T06:28:21Z INFO  Loaded settlement batch 11 (50000 rows) in 377 ms
+2026-09-24T06:28:22Z INFO  Loaded settlement batch 12 (50000 rows) in 384 ms
+2026-09-24T06:28:23Z INFO  Loaded settlement batch 13 (50000 rows) in 391 ms
+2026-09-24T06:28:24Z INFO  Loaded settlement batch 14 (50000 rows) in 398 ms
+2026-09-24T06:28:25Z INFO  Loaded settlement batch 15 (50000 rows) in 405 ms
+2026-09-24T06:28:26Z INFO  Loaded settlement batch 16 (50000 rows) in 412 ms
+2026-09-24T06:28:27Z INFO  Loaded settlement batch 17 (50000 rows) in 419 ms
+2026-09-24T06:28:28Z INFO  Loaded settlement batch 18 (50000 rows) in 426 ms
+2026-09-24T06:28:29Z INFO  Loaded settlement batch 19 (50000 rows) in 433 ms
+2026-09-24T06:28:30Z INFO  Loaded settlement batch 20 (50000 rows) in 440 ms
+2026-09-24T06:28:31Z INFO  Loaded settlement batch 21 (50000 rows) in 447 ms
+2026-09-24T06:28:32Z INFO  Loaded settlement batch 22 (50000 rows) in 454 ms
+2026-09-24T06:28:33Z INFO  Loaded settlement batch 23 (50000 rows) in 461 ms
+2026-09-24T06:28:34Z INFO  Loaded settlement batch 24 (50000 rows) in 468 ms
 2026-09-24T06:28:40Z WARN  Heap usage 210Mi / 256Mi
 2026-09-24T06:28:55Z WARN  Heap usage 249Mi / 256Mi, GC overhead 71%
 2026-09-24T06:29:01Z ERROR java.lang.OutOfMemoryError: Java heap space
@@ -189,6 +213,8 @@ class Kubernetes(BaseHTTPRequestHandler):
         if path in ("/api/v1/namespaces/prod/services/postgres-metrics:9187/proxy/metrics",
                     "/api/v1/namespaces/prod/services/postgres-read-metrics:9187/proxy/metrics"):
             return self.send(exporter_metrics(replica="read" in path), ctype="text/plain")
+        if path.endswith("/proxy/api/v1/query_range") and "container_memory_working_set_bytes" in q.get("query", [""])[0]:
+            return self.send({"status": "success", "data": {"resultType": "matrix", "result": memory_runs(q)}})
         if path.startswith("/api/v1/namespaces/monitoring/services/prometheus-operated:9090/proxy/api/v1/query"):
             used = "used" in q.get("query", [""])[0]
             return self.send({"status": "success", "data": {"resultType": "vector", "result": [
@@ -246,6 +272,9 @@ class Model(BaseHTTPRequestHandler):
 
     def do_POST(self):
         body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+        if os.getenv("MODEL_LOG"):   # what KubePulse sends the model, for checking the evidence
+            with open(os.getenv("MODEL_LOG"), "a") as f:
+                f.write(json.dumps(body["messages"]) + "\n")
         tool_messages = sum(1 for m in body["messages"] if m["role"] == "tool")
         if "tools" not in body:   # the short analysis sent with a CrashLoopBackOff alert
             reply = ("**Cause:** The container runs out of Java heap while warming its settlement cache and is OOMKilled.\n"
@@ -298,6 +327,26 @@ class Webhook(BaseHTTPRequestHandler):
         self.wfile.write(b"ok")
 
 
+def memory_runs(q):
+    """payments-api's memory per run: ~150Mi after startup, then a jump while the settlement cache warms, killed at 256Mi."""
+    if "payments-api" not in q["query"][0]:
+        return []
+    start, end, step = (float(q[k][0]) for k in ("start", "end", "step"))
+    out, run_start, n = [], end - 6 * 600, 0
+    while run_start < end:
+        values = []
+        t = max(start, run_start)
+        while t < min(end, run_start + 540):
+            age = t - run_start
+            mem = 40 if age < 60 else 150 + age / 60 if age < 420 else 160 + (age - 420) * 0.8   # jump from minute 7
+            values.append([t, str(int(min(mem, 255) * 2**20))])
+            t += step
+        if values:
+            out.append({"metric": {"container": "app", "id": f"/cri-containerd-{n}"}, "values": values})
+        run_start, n = run_start + 600, n + 1
+    return out
+
+
 # ---------- PostgreSQL: a postgres_exporter and a tiny server that answers KubePulse's own queries ----------
 
 DBS = {"payments": 2.1e9, "orders": 6.4e9, "keycloak": 0.3e9, "postgres": 8e6}
@@ -348,7 +397,9 @@ STATEMENTS = [   # query, database, calls per second, mean ms
     ("SELECT u.* FROM user_entity u WHERE u.realm_id = $1 AND u.username = $2", "keycloak", 3, 2.4),
     ("DELETE FROM sessions WHERE expires_at < now()", "payments", 0.01, 18200.0),
     ("SELECT p.*, m.name FROM payments p JOIN merchants m ON m.id = p.merchant_id WHERE p.created_at > $1", "payments", 1.2, 640.0),
+    ("SELECT * FROM settlements WHERE merchant_id = ANY($1) ORDER BY id OFFSET $2 LIMIT $3", "payments", 0.3, 310.0),
 ]
+ROWS_PER_CALL = {10: 50000, 9: 2400}   # the settlement cache loads 50,000 rows per call
 
 
 def fake_sessions():
@@ -389,8 +440,8 @@ def fake_sql(q):
     if "pg_stat_activity" in q:
         return fake_sessions()
     if "pg_stat_statements" in q:
-        return [{"id": str(9000 + i), "datname": db, "usename": "app", "calls": str(int(cps * (40000 + up))), "total": str(cps * (40000 + up) * mean),
-                 "mean": str(mean), "max": str(mean * 6), "rows": str(int(cps * 40000)), "hit": str(int(9e5 / (1 + mean / 50))), "rd": str(int(mean * 40)),
+        return [{"id": str(9000 + i), "datname": db, "usename": {"payments": "payments_api", "orders": "checkout", "keycloak": "auth"}.get(db, "app"), "calls": str(int(cps * (40000 + up))), "total": str(cps * (40000 + up) * mean),
+                 "mean": str(mean), "max": str(mean * 6), "rows": str(int(cps * (40000 + up) * ROWS_PER_CALL.get(i, 1))), "hit": str(int(9e5 / (1 + mean / 50))), "rd": str(int(mean * 40)),
                  "tmp": "2048" if mean > 5000 else "0", "query": text} for i, (text, db, cps, mean) in enumerate(STATEMENTS)]
     return []
 

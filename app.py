@@ -429,6 +429,7 @@ class Insights:
         self.created = {}    # (ns, owner) -> {pod: created at}
         self.ended = {}      # (ns, owner) -> [(created at, ended at)]
         self.db_peak = {}    # "YYYY-MM-DD" -> {"ns/name": highest connections % that day}, 8 days, for the digest
+        self.memhist = {}    # (ns, pod) -> deque of (time, memory bytes) once a minute for 6 hours: memory before a crash without Prometheus
         self.prev = None     # (ns, pod) -> (restarts, level)
         self.certs = self.pvcs = None
         self.slow_at = self.saved_at = 0.0
@@ -523,6 +524,13 @@ class Insights:
                 u[2] += 1
         for k in set(self.usage) - set(cur):
             del self.usage[k]
+        for k, p in cur.items():
+            if p["mem"] is not None:
+                h = self.memhist.setdefault(k, deque(maxlen=360))
+                if not h or now - h[-1][0] >= 55:
+                    h.append((int(now), p["mem"]))
+        for k in set(self.memhist) - set(cur):
+            del self.memhist[k]
 
         # Highest CPU and memory per pod in the last 24 hours (a peak older than that is replaced by the current value)
         for k, p in cur.items():
@@ -709,6 +717,22 @@ def prometheus_query(query):
     if env("K8S_API"):
         return k8s_get(f"/api/v1/namespaces/{ns}/services/{name}:{port}/proxy/api/v1/query?{qs}")["data"]["result"]
     with urllib.request.urlopen(f"http://{name}.{ns}.svc:{port}/api/v1/query?{qs}", timeout=10) as resp:
+        return json.load(resp)["data"]["result"]
+
+
+def prometheus_range(query, start, end, step):
+    """A range query, routed like prometheus_query. None when there's no Prometheus."""
+    qs = f"query={quote(query)}&start={int(start)}&end={int(end)}&step={max(1, int(step))}"
+    if PROMETHEUS_URL:
+        with urllib.request.urlopen(f"{PROMETHEUS_URL}/api/v1/query_range?{qs}", timeout=15) as resp:
+            return json.load(resp)["data"]["result"]
+    target = find_prometheus()
+    if not target:
+        return None
+    ns, name, port = target
+    if env("K8S_API"):
+        return k8s_get(f"/api/v1/namespaces/{ns}/services/{name}:{port}/proxy/api/v1/query_range?{qs}")["data"]["result"]
+    with urllib.request.urlopen(f"http://{name}.{ns}.svc:{port}/api/v1/query_range?{qs}", timeout=15) as resp:
         return json.load(resp)["data"]["result"]
 
 
@@ -1023,7 +1047,8 @@ class Databases:
         self.prev = {}          # key -> (time, counters, {database: counters}), for rates
         self.sizes = {}         # key -> {database: deque of (time, size)}, every 10 minutes for a day, for growth
         self.hist = {}          # key -> deque of [t, connections, active, tps, cache hit %]
-        self.stmt_samples = {}  # key -> deque of (time, {queryid: (calls, total ms)}), the last hour
+        self.stmt_samples = {}  # key -> deque of (time, {queryid: (calls, total ms, rows)}), the last hour
+        self.stmt_info = {}     # key -> {queryid: (db, user, query without values)}, for every sampled statement
         self.stmt_at = {}       # key -> when statements were last read
         self.stmts = {}         # key -> (rows, error)
         self.lock = threading.Lock()
@@ -1148,19 +1173,20 @@ class Databases:
             self.stmts[key] = (None, msg)
             return self.stmts[key]
         rows = [r for r in rows if r["usename"] != client.user]
-        cur = {r["id"]: (_num(r["calls"], int) or 0, _num(r["total"]) or 0.0) for r in rows}
+        cur = {r["id"]: (_num(r["calls"], int) or 0, _num(r["total"]) or 0.0, _num(r["rows"], int) or 0) for r in rows}
+        self.stmt_info[key] = {r["id"]: (r["datname"], r["usename"], normalize_sql(r["query"])) for r in rows}
         samples = self.stmt_samples.setdefault(key, deque())
-        if samples and sum(c for c, _ in cur.values()) < sum(c for c, _ in samples[-1][1].values()) * 0.5:
+        if samples and sum(x[0] for x in cur.values()) < sum(x[0] for x in samples[-1][1].values()) * 0.5:
             samples.clear()   # the statistics were reset
         samples.append((now, cur))
         while samples and now - samples[0][0] > 3600 + self.STMT_EVERY:
             samples.popleft()
         base_t, base = samples[0]
-        grand = sum(t for _, t in cur.values()) or 1
+        grand = sum(x[1] for x in cur.values()) or 1
         out = []
         for r in rows:
-            calls, tot = cur[r["id"]]
-            c0, t0 = base.get(r["id"], (0, 0.0)) if len(samples) > 1 else (calls, tot)
+            calls, tot, _ = cur[r["id"]]
+            c0, t0, _ = base.get(r["id"], (0, 0.0, 0)) if len(samples) > 1 else cur[r["id"]]
             hit, rd = _num(r["hit"]) or 0, _num(r["rd"]) or 0
             out.append({
                 "id": r["id"], "db": r["datname"], "user": r["usename"], "calls": calls, "total": tot, "mean": _num(r["mean"]),
@@ -1203,6 +1229,31 @@ class Databases:
                     db["growth"], db["growthOver"] = db["size"] - h[0][1], int(now - h[0][0])
         for name in set(sizes) - set(dbs):
             del sizes[name]
+
+    def rows_before(self, key, users, at, minutes=10):
+        """Statements of these (db, user) pairs that read or wrote the most rows in the minutes before `at`
+        (e.g. a crash), next to their usual amount for that long. None if `at` is outside the last hour of samples."""
+        samples = list(self.stmt_samples.get(key) or [])
+        if len(samples) < 2 or not samples[0][0] <= at <= samples[-1][0] + self.STMT_EVERY:
+            return None
+        before = max((s for s in samples if s[0] <= at - minutes * 60), key=lambda s: s[0], default=samples[0])
+        after = min((s for s in samples if s[0] >= at), key=lambda s: s[0], default=samples[-1])
+        if after[0] <= before[0]:
+            return None
+        span, whole = after[0] - before[0], samples[-1][0] - samples[0][0]
+        info, out = self.stmt_info.get(key, {}), []
+        for qid, (calls, _, rows) in after[1].items():
+            db, user, query = info.get(qid, (None, None, ""))
+            if (db, user) not in users:
+                continue
+            c0, _, r0 = before[1].get(qid, (calls, 0, rows))
+            first = samples[0][1].get(qid, (calls, 0, rows))
+            usual = (samples[-1][1].get(qid, (calls, 0, rows))[2] - first[2]) / whole * span if whole > 0 else None
+            if rows - r0 > 0:
+                out.append({"query": query, "db": db, "rows": rows - r0, "calls": calls - c0,
+                            "usualRowsForSameTime": round(usual) if usual is not None else None})
+        return {"window": f"{fmt_age(int(span))} up to {datetime.fromtimestamp(after[0], timezone.utc).strftime('%H:%M:%S')} UTC",
+                "statements": sorted(out, key=lambda q: -q["rows"])[:6]}
 
     def _rates(self, key, inst):
         now, c = time.time(), inst["counters"]
@@ -1423,6 +1474,246 @@ def tool_get_database_status(name=""):
             "problems": d.get("errors") or None,
         })
     return out or {"note": "KubePulse doesn't monitor any PostgreSQL server (no exporter found and PG_URLS not set)."}
+
+
+def pod_database_usage(ns, name, crash_at=None):
+    """What a pod's app does in PostgreSQL: its connections, the queries it's running or waiting on, who it blocks,
+    and the heaviest statements of the database user it signs in as. None when it holds no connection we can see."""
+    pod = next((p for p in (STORE.snap or {}).get("pods", []) if p["namespace"] == ns and p["name"] == name), None)
+    workload = owner_short(pod["owner"]) if pod and pod.get("owner") else name
+    mine = lambda s: (s.get("pod") or [None])[0] == ns and (s.get("workload") or s.get("label")) == workload
+    out = []
+    for d in DATABASES.view().get("instances", []):
+        apps = [a for a in d.get("apps") or [] if a["name"] == workload and (a.get("pod") or [None])[0] == ns]
+        if not apps:
+            continue
+        running = d.get("running") or []
+        users = {(a["db"], a["user"]) for a in apps}
+        stmts = [dict(q) for q in (d.get("statements") or {}).get("rows") or [] if (q["db"], q["user"]) in users]
+        keep = ("db", "calls", "mean", "max", "rows", "recentCalls", "recentTotal", "share", "cacheHit", "tempBlocks", "query")
+        for q in stmts:
+            q["rowsPerCall"] = round(q["rows"] / q["calls"]) if q.get("rows") is not None and q["calls"] else None
+        out.append({
+            "server": f"{d['namespace']}/{d['name']}" if d["namespace"] else d["name"], "up": d.get("up"), "replica": d.get("replica"),
+            "serverConnections": f"{d.get('connections')} of {d.get('maxConnections')} ({d.get('connPercent')}%)",
+            "serverTps": d.get("tps"), "serverCacheHitPercent": d.get("cacheHit"),
+            "thisApp": [{k: a[k] for k in ("db", "user", "pods", "total", "active", "idle", "idleInTx", "waiting", "longestIdleInTx", "longestActive")} for a in apps],
+            "thisPodsSessions": [{k: x.get(k) for k in ("db", "state", "duration", "wait", "blockers", "query")}
+                                 for x in running if x.get("pod") == [ns, name]][:8],
+            "otherPodsOfThisApp": [{k: x.get(k) for k in ("db", "state", "duration", "wait", "blockers", "query")}
+                                   for x in running if mine(x) and x.get("pod") != [ns, name]][:5],
+            "blockedByThisApp": [{k: x.get(k) for k in ("label", "db", "duration", "query")}
+                                 for x in running if any(b["workload"] == workload for b in x.get("blockers") or [])][:5],
+            "heaviestStatementsOfItsDbUser": [{k: q[k] for k in keep} for q in sorted(stmts, key=lambda q: -q["recentTotal"])[:5]],
+            "slowestPerCallOfItsDbUser": [{k: q[k] for k in keep} for q in sorted(stmts, key=lambda q: -(q["mean"] or 0))[:3]],
+            "mostRowsPerCallOfItsDbUser": [{k: q[k] for k in keep + ("rowsPerCall",)} for q in sorted(stmts, key=lambda q: -(q["rowsPerCall"] or 0))[:3]
+                                           if (q["rowsPerCall"] or 0) >= 1000],
+            "rowsJustBeforeLastCrash": DATABASES.rows_before((d["namespace"], d["name"]), users, crash_at) if crash_at else None,
+            "note": "Statements come from pg_stat_statements, which groups by database user, so they include other apps that share the same user.",
+        })
+        out[-1] = {k: v for k, v in out[-1].items() if v not in ([], None)}   # leave out empty lists: less for the model to read
+    return out or None
+
+
+# ---------- Memory: why a container's memory grew before it was OOM-killed ----------
+
+MEM_SETTING_RE = re.compile(r"(?i)^(JAVA_OPTS|JAVA_TOOL_OPTIONS|_JAVA_OPTIONS|JDK_JAVA_OPTIONS|CATALINA_OPTS|\w*JVM_OPTS|\w*JAVA_ARGS|"
+                            r"NODE_OPTIONS|GOMEMLIMIT|GOGC|MALLOC_ARENA_MAX|PYTHONMALLOC|DOTNET_GC\w*|\w*HEAP\w*|\w*XMX\w*)$")
+MEM_FLAG_RE = re.compile(r"(-Xm[sx]\S+|-Xss\S+|-XX:\S*(?:RAM|Heap|Metaspace|DirectMemory|CodeCache|ThreadStack)\S*|--max-old-space-size=\S+)")
+_LOG_TS = re.compile(r"(\d{4}-\d\d-\d\d[T ]\d\d:\d\d:\d\d)")
+_LOG_NOISE = [(re.compile(r"^\S*\d{4}-\d\d-\d\d[T ][\d:.,]+\S*\s*"), ""),
+              (re.compile(r"(?i)\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b"), "<id>"),
+              (re.compile(r"(?i)\b0x[0-9a-f]+\b|\b\d+(?:[.,]\d+)*\b"), "#")]
+_SQL_COLUMNS = [(re.compile(r"(?is)\bselect\s+(?:distinct\s+)?.{20,}?\s+from\s"), "select … from "),   # keep the table and condition
+                (re.compile(r"(?is)\b(insert\s+into\s+\S+)\s*\(.*?\)\s*values\s*\(.*?\)"), r"\1 (…) values (…)")]
+
+
+def _short_sql(l):
+    for pattern, repl in _SQL_COLUMNS:
+        l = pattern.sub(repl, l)
+    return l
+_LOG_HEALTH = re.compile(r"(?i)actuator|/health|healthz|readyz|livez|/ping\b|kube-probe|DispatcherServlet|RequestResponseBodyMethodProcessor|"
+                         r"HandlerMapping|HttpEntityMethodProcessor")   # health checks and per-request web framework debug lines
+_LOG_PROBLEM = re.compile(r"(?i)\b(error|warn\w*|exception|outofmemory|oom|killed|timeout|timed out|refused|too many|exceeded|gc overhead)\b")
+
+
+def runtime_memory_settings(ns, c):
+    """Memory settings of the language runtime (JVM heap flags, NODE_OPTIONS, GOMEMLIMIT...) from the container's
+    env, its ConfigMaps and its command. Only names that look like memory settings are read."""
+    out, cms = {}, {}
+    def cm(name):
+        if name not in cms:
+            cms[name] = (k8s_get_optional(f"/api/v1/namespaces/{ns}/configmaps/{name}") or {}).get("data") or {}
+        return cms[name]
+    for e in c.get("env") or []:
+        if not MEM_SETTING_RE.match(e.get("name", "")):
+            continue
+        ref = (e.get("valueFrom") or {}).get("configMapKeyRef")
+        if "value" in e:
+            out[e["name"]] = str(e["value"])[:300]
+        elif ref and ref.get("name"):
+            out[f"{e['name']} (ConfigMap {ref['name']})"] = str(cm(ref["name"]).get(ref.get("key"), "(missing)"))[:300]
+        elif e.get("valueFrom"):
+            out[e["name"]] = "(from a Secret or field, not read)"
+    for ref in c.get("envFrom") or []:
+        name = (ref.get("configMapRef") or {}).get("name")
+        if name:
+            for k, v in cm(name).items():
+                if MEM_SETTING_RE.match((ref.get("prefix") or "") + k):
+                    out[f"{(ref.get('prefix') or '') + k} (ConfigMap {name})"] = str(v)[:300]
+    flags = MEM_FLAG_RE.findall(" ".join(map(str, (c.get("command") or []) + (c.get("args") or []))))
+    if flags:
+        out["flags in command"] = " ".join(flags)[:300]
+    return out
+
+
+def _runs(points, step):
+    """Split one container's memory samples into runs: a new run starts after a gap or when memory drops by 40%."""
+    runs = []
+    for t, v in sorted(points):
+        if runs and t - runs[-1][-1][0] <= 3 * step and not (v < runs[-1][-1][1] * 0.6 and runs[-1][-1][1] > 32 * 2**20):
+            runs[-1].append((t, v))
+        else:
+            runs.append([(t, v)])
+    return [r for r in runs if len(r) >= 2]
+
+
+def _run_summary(run, limit):
+    mi = lambda b: round(b / 2**20)
+    t0, t1 = run[0][0], run[-1][0]
+    hours = (t1 - t0) / 3600
+    settled = next((v for t, v in run if t - t0 >= 180), run[-1][1])   # after startup
+    peak = max(v for _, v in run)
+    after = [(t, v) for t, v in run if t - t0 >= 180]
+    slope = None
+    if len(after) >= 3 and after[-1][0] > after[0][0]:
+        n, mt, mv = len(after), sum(t for t, _ in after) / len(after), sum(v for _, v in after) / len(after)
+        den = sum((t - mt) ** 2 for t, _ in after)
+        slope = sum((t - mt) * (v - mv) for t, v in after) / den * 3600 if den else None
+    jump, jump_at, lo = 0, None, deque()
+    for t, v in after:   # biggest rise within 5 minutes, after startup
+        lo.append((t, v))
+        while lo and t - lo[0][0] > 300:
+            lo.popleft()
+        rise = v - min(x for _, x in lo)
+        if rise > jump:
+            jump, jump_at = rise, t
+    step = max(1, len(run) // 20)
+    out = {"from": datetime.fromtimestamp(t0, timezone.utc).strftime("%Y-%m-%d %H:%M UTC"), "lasted": fmt_age(int(t1 - t0)) or "<1m",
+           "afterStartupMi": mi(settled), "peakMi": mi(peak), "lastSeenMi": mi(run[-1][1]),
+           "growthMiPerHour": round(slope / 2**20, 1) if slope is not None else None,
+           "biggestRiseIn5MinMi": mi(jump), "biggestRiseAt": datetime.fromtimestamp(jump_at, timezone.utc).strftime("%H:%M UTC") if jump_at else None,
+           "samples": [[round((t - t0) / 60), mi(v)] for t, v in run[::step]] + ([[round((t1 - t0) / 60), mi(run[-1][1])]] if (len(run) - 1) % step else [])}
+    if limit:
+        out["headroomAfterStartupPercent"] = round((limit - settled) / limit * 100)
+        out["shape"] = ("crashed within minutes of starting" if hours < 0.1 else
+                        "starts close to the limit, little room left" if settled >= 0.85 * limit else
+                        "sudden rise" if jump >= 0.15 * limit and jump >= 0.4 * max(1, peak - settled) else
+                        "steady climb" if slope and slope * hours >= 0.1 * limit else "flat")
+    return out
+
+
+def log_summary(text):
+    """What a run of the app was doing: its most repeated messages (numbers and ids removed), warnings and errors, last lines."""
+    lines = []
+    for l in (text or "").splitlines():   # a line without a timestamp continues the one before (stack traces, Hibernate SQL)
+        if not l.strip():
+            continue
+        if lines and not _LOG_TS.search(l[:40]) and not l.startswith("Hibernate:") and len(lines[-1]) < 20000:
+            lines[-1] += " " + l.strip()
+        else:
+            lines.append(l)
+    def norm(l):
+        l = _short_sql(l)
+        for pattern, repl in _LOG_NOISE:
+            l = pattern.sub(repl, l)
+        return re.sub(r"\s+", " ", l).strip()[:240]
+    counts = {}
+    for l in lines:
+        if _LOG_HEALTH.search(l):
+            continue
+        k = norm(l)
+        counts[k] = counts.get(k, 0) + 1
+    problems = list(dict.fromkeys(norm(l) for l in lines if _LOG_PROBLEM.search(l)))
+    stamps = [m.group(1) for m in (_LOG_TS.search(l[:40]) for l in lines) if m]
+    return {"lines": len(lines), "from": stamps[0] if stamps else None, "to": stamps[-1] if stamps else None,
+            "mostRepeated": [{"count": n, "message": m} for m, n in sorted(counts.items(), key=lambda kv: -kv[1])[:10] if n > 1],
+            "warningsAndErrors": problems[:10], "lastLines": [re.sub(r"\s+", " ", _short_sql(l))[:300] for l in lines[-15:]]}
+
+
+def memory_story(ns, name):
+    """Why the pod's memory grew: memory over each run (Prometheus or KubePulse's own samples), crash times, runtime
+    memory settings and what the crashed run was doing. Only for containers OOM-killed or near their memory limit."""
+    pod = k8s_get(f"/api/v1/namespaces/{ns}/pods/{name}")
+    spec, status = pod.get("spec", {}), pod.get("status", {})
+    statuses = {c["name"]: c for c in status.get("containerStatuses") or []}
+    snap_pod = next((p for p in (STORE.snap or {}).get("pods", []) if p["namespace"] == ns and p["name"] == name), {})
+    out = []
+    for c in spec.get("containers", []):
+        cs = statuses.get(c["name"], {})
+        last = (cs.get("lastState") or {}).get("terminated") or {}
+        limit = parse_mem(((c.get("resources") or {}).get("limits") or {}).get("memory")) or None
+        if last.get("reason") != "OOMKilled" and not (limit and snap_pod.get("mem") and snap_pod["mem"] >= 0.85 * limit):
+            continue
+        story = {"container": c["name"], "limit": ((c.get("resources") or {}).get("limits") or {}).get("memory"),
+                 "request": ((c.get("resources") or {}).get("requests") or {}).get("memory"), "restarts": cs.get("restartCount", 0)}
+        if last:
+            story["lastExit"] = {"reason": last.get("reason"), "exitCode": last.get("exitCode"), "endedAt": last.get("finishedAt"),
+                                 "ranFor": fmt_age(age_seconds(last["startedAt"]) - age_seconds(last["finishedAt"]))
+                                 if last.get("startedAt") and last.get("finishedAt") else None}
+        owner = snap_pod.get("owner") or ""
+        crashes = [r for r in INSIGHTS.restart_log if r[1] == ns and r[2] == (owner or "Pod/" + name)]
+        if crashes:
+            story["restartsOfThisWorkload7Days"] = [{"at": datetime.fromtimestamp(r[0], timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+                                                     "count": r[3], "reason": r[4]} for r in crashes[-15:]]
+        try:
+            story["runtimeMemorySettings"] = runtime_memory_settings(ns, c) or "none set (runtime defaults)"
+        except Exception as e:
+            story["runtimeMemorySettings"] = f"could not read: {api_error(e)[1][:100]}"
+
+        # Memory over time, one entry per run of the container
+        created = age_seconds(pod["metadata"].get("creationTimestamp")) or 86400
+        end = time.time()
+        start = end - min(created + 120, 24 * 3600)
+        step = max(15, int((end - start) / 400))
+        runs, source = [], None
+        try:
+            res = prometheus_range(f'container_memory_working_set_bytes{{namespace="{ns}",pod="{name}",container="{c["name"]}"}}', start, end, step)
+            if res:
+                source = "Prometheus (container_memory_working_set_bytes)"
+                for series in res:
+                    runs += _runs([(float(t), float(v)) for t, v in series["values"]], step)
+        except Exception as e:
+            story["prometheusError"] = api_error(e)[1][:160]
+        if not runs and INSIGHTS.memhist.get((ns, name)):
+            source, step = "KubePulse's own samples (last 6 hours, whole pod)", 60
+            runs = _runs(list(INSIGHTS.memhist[(ns, name)]), 60)
+        if runs:
+            runs.sort(key=lambda r: r[0][0])
+            summaries = [_run_summary(r, limit) for r in runs[-6:]]
+            story["memoryHistory"] = {"source": source, "runs": summaries}
+            # The last minutes before each recent kill, in finer detail (the current run hasn't ended unless it's crash-looping)
+            ended = len(summaries) - (1 if "running" in (cs.get("state") or {}) else 0)
+            for r, summary in list(zip(runs[-6:], summaries))[:ended][-3:]:
+                try:
+                    fine = prometheus_range(f'container_memory_working_set_bytes{{namespace="{ns}",pod="{name}",container="{c["name"]}"}}',
+                                            r[-1][0] - 600, r[-1][0] + 60, 15) if source and source.startswith("Prometheus") else None
+                    pts = sorted((float(t), float(v)) for s_ in fine or [] for t, v in s_["values"] if float(t) <= r[-1][0] + 1)
+                    if pts:
+                        summary["last10MinMi"] = [[round((t - r[-1][0]) / 60, 1), round(v / 2**20)] for t, v in pts[::2]]
+                except Exception:
+                    pass
+        else:
+            story["memoryHistory"] = "No history: no Prometheus found and KubePulse has no samples for this pod yet."
+
+        # What the crashed run was doing
+        if last:
+            try:
+                story["crashedRunLogs"] = log_summary(pod_logs(ns, name, c["name"], True, 2000))
+            except Exception as e:
+                story["crashedRunLogs"] = f"not available: {api_error(e)[1][:120]}"
+        out.append(story)
+    return out or None
 
 
 # ---------- Rollouts: what changed, when, and whether it went well ----------
@@ -1849,6 +2140,8 @@ def container_state(state):
                 "message": s.get("message"),
                 "exitCode": s.get("exitCode"),
                 "age": age_seconds(s.get("finishedAt") if phase == "terminated" else s.get("startedAt")),
+                **({"ranFor": age_seconds(s["startedAt"]) - age_seconds(s["finishedAt"])}
+                   if phase == "terminated" and s.get("startedAt") and s.get("finishedAt") else {}),
             }
     return {"phase": "unknown", "reason": "Unknown"}
 
@@ -2233,8 +2526,27 @@ root cause yourself with the read-only tools, the way a senior SRE would:
 - Start from the evidence you're given, then dig: read logs (previous=true for crashed containers),
   look at the owning workload and its recent rollouts, compare sibling pods, check the node, check
   services/endpoints the app talks to, and check that referenced ConfigMaps and volumes exist.
-  For database errors (timeouts, connection pool exhausted, too many connections, lock waits) check
-  get_database_status: connections per app, long or blocked queries and slow statements.
+  If the evidence has "database", that is this app's own PostgreSQL activity: its connections (idle in
+  transaction or waiting = pool or lock trouble), what its sessions are running or waiting on now, sessions
+  it blocks, and the heaviest statements of its database user. Use it whenever the symptoms could come from
+  the database: timeouts, slow responses, failing readiness probes, 5xx, pool exhausted, too many connections,
+  lock waits. Name the exact query (as shown, values are already removed) when it is the cause. Call
+  get_database_status to see the whole server, e.g. which other app holds the lock or uses the connections.
+- OOMKilled or memory near the limit: never stop at "the limit is too low". Find WHY memory grew, from
+  the "Memory story": memory per run (after startup, growth per hour, biggest rise in 5 minutes and when,
+  the last 10 minutes before each kill), when the restarts happened, the runtime memory settings and what
+  the crashed run was doing (its most repeated log messages with counts, warnings, last lines). Decide which
+  it is and show the evidence:
+  * starts close to the limit: the app needs that much just to run (heap sized near the limit, big caches
+    loaded at startup); any normal burst then kills it.
+  * steady climb, similar run lengths: a leak or an unbounded cache/queue; say how many Mi per hour.
+  * sudden rise: a trigger. Match its time to the logs (a batch, a message backlog, a report or export,
+    many records at once) and to the app's database queries (rows per call, rows just before the crash).
+  * restarts bunched together: something external at that time (a rollout, a backlog after downtime, a job).
+  * JVM: exit code 137 without java.lang.OutOfMemoryError means the whole process (heap + metaspace + threads
+    + direct buffers) passed the container limit; compare -Xmx / MaxRAMPercentage with the limit.
+  Name the trigger with times and numbers. Raise the limit only as a stopgap next to the real fix. If the
+  evidence can't tell, say exactly what's missing (e.g. a heap dump on OOM, GC logs, JVM metrics).
 - Follow the evidence. Don't call tools you don't need. Stop as soon as you're confident.
 - Never ask the user to run commands or check things: you are the one investigating. If something
   can't be checked with your tools (Secret contents, databases KubePulse doesn't monitor, cloud resources), say so.
@@ -2243,7 +2555,7 @@ Final report in Markdown for the developer on call:
 ## Verdict
 One sentence: what is broken and why.
 ## Root cause
-The cause, your confidence (High / Medium / Low) and why.
+The cause, your confidence (High / Medium / Low) and why. For memory problems: what made memory grow.
 ## What I found
 Bullets of concrete findings from your investigation: quote log lines, events and numbers.
 ## Impact
@@ -2251,7 +2563,7 @@ What is affected (e.g. 2 of 3 replicas down, service has no ready endpoints), or
 ## Fix
 The specific change to make (which resource, which field, what value) in plain words. No kubectl
 commands, unless the fix is a one-off action like a rollback; then at most one.
-Keep the report under 300 words."""
+Keep the report under 350 words."""
 
 JOBS = {}
 JOBS_LOCK = threading.Lock()
@@ -2291,9 +2603,43 @@ def investigate(job):
     try:
         first, summary = tool_get_pod(ns, name)
         job["steps"].append({"label": f"Inspected pod {name}", "result": summary, "status": "done"})
+        try:
+            mem = memory_story(ns, name)
+        except Exception as e:
+            mem = None
+            print(f"memory story for {ns}/{name} failed: {api_error(e)[1]}", flush=True)
+        if mem:
+            for m in mem:
+                runs = m["memoryHistory"]["runs"] if isinstance(m.get("memoryHistory"), dict) else []
+                last = runs[-1] if runs else {}
+                job["steps"].append({"label": f"Traced memory of {m['container']} over time", "status": "done",
+                                     "result": f"{len(runs)} run{'s' if len(runs) != 1 else ''}" + (f", latest: {last.get('shape')}, "
+                                               f"{last.get('afterStartupMi')}Mi after startup of {m['limit']}" if last else ", no history")})
+        crash_at = None
+        for m in mem or []:
+            ended = (m.get("lastExit") or {}).get("endedAt")
+            if ended:
+                crash_at = time.time() - (age_seconds(ended) or 0)
+        try:
+            db = pod_database_usage(ns, name, crash_at)
+        except Exception as e:
+            db = None
+            print(f"database usage for {ns}/{name} failed: {e}", flush=True)
+        if db:
+            n = sum(a["total"] for d in db for a in d["thisApp"])
+            busy = sum(len(d.get("thisPodsSessions", [])) + len(d.get("otherPodsOfThisApp", [])) for d in db)
+            blocking = sum(len(d.get("blockedByThisApp", [])) for d in db)
+            job["steps"].append({"label": "Checked its database connections and queries", "status": "done",
+                                 "result": f"{n} connection{'s' if n != 1 else ''} to {', '.join(d['server'] for d in db)}"
+                                           + (f", {busy} busy" if busy else "") + (f", blocking {blocking}" if blocking else "")})
+        evidence = f"Investigate pod {ns}/{name}. Current state:\n" + redact(json.dumps(first, indent=1))[:14000]
+        if mem:
+            evidence += "\n\nMemory story (why memory grew; times in UTC):\n" + redact(json.dumps(mem, separators=(",", ":")))[:12000]
+        if db:
+            evidence += "\n\nThis app's PostgreSQL activity:\n" + redact(json.dumps(db, separators=(",", ":")))[:8000]
         messages = [
             {"role": "system", "content": AI_PROMPT},
-            {"role": "user", "content": f"Investigate pod {ns}/{name}. Current state:\n" + redact(json.dumps(first, indent=1))[:14000]},
+            {"role": "user", "content": evidence},
         ]
         for _ in range(AI_MAX_STEPS):
             out = openai_chat(messages, tools=TOOLS, tool_choice="auto")
